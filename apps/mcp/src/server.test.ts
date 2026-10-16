@@ -1,5 +1,6 @@
-// `defe2end-mcp` against a fake desktop socket (unix socket in a test DIR, token reader injected).
-import { mkdtempSync, rmSync } from "node:fs";
+// `defe2end-mcp` against a fake desktop socket (unix socket in a test DIR, or on Windows a named pipe named in the
+// DIR's endpoint.txt, as the app writes it; token reader injected).
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server as NetServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,7 +47,12 @@ async function startFake(): Promise<void> {
       }
     });
   });
-  await new Promise<void>((r) => fake!.listen(join(dir, "mcp.sock"), r));
+  let address = join(dir, "mcp.sock");
+  if (process.platform === "win32") {
+    address = `\\\\.\\pipe\\d2e-mcp-test-${process.pid}-${Date.now()}`;
+    writeFileSync(join(dir, "endpoint.txt"), address);
+  }
+  await new Promise<void>((r) => fake!.listen(address, r));
 }
 
 async function connect(opts: { clientName?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; keys?: string[] } = {}) {

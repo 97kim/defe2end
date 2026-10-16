@@ -121,6 +121,7 @@ describe("redactDom", () => {
     const start = performance.now();
     redactText("x".repeat(200_000));
     redactText("1".repeat(200_000));
-    expect(performance.now() - start).toBeLessThan(1_000);
+    // The quadratic pattern took about 30s for this; a loaded CI machine takes about 1s for the linear one.
+    expect(performance.now() - start).toBeLessThan(5_000);
   });
 });
