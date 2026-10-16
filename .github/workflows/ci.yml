@@ -139,3 +139,6 @@ jobs:
       # login, one run, the secret and the old screenshot.
       # From the latest stable release before this commit (its published images); none yet -> the base commit.
       - run: UPGRADE_FROM_VERSION="$(sh deploy/test/previous-release.sh)" sh deploy/test/upgrade.sh
+        env:
+          # Read-only: lists published releases (the workflow's permissions are contents: read).
+          GH_TOKEN: ${{ github.token }}
