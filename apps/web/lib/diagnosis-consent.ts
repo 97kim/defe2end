@@ -19,3 +19,21 @@ export async function hasConsent(fetcher: Fetch = fetch, storage: Pick<Storage, 
   const body = (await res.json().catch(() => null)) as { consentedAt?: unknown } | null;
   return typeof body?.consentedAt === "string";
 }
+
+/**
+ * One diagnosis send at a time. `claim()` is synchronous, so a second click while the first send still awaits the
+ * consent check gets `false` and starts nothing.
+ */
+export function sendLock() {
+  let held = false;
+  return {
+    claim(): boolean {
+      if (held) return false;
+      held = true;
+      return true;
+    },
+    release(): void {
+      held = false;
+    },
+  };
+}

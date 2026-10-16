@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CONSENT_URL, hasConsent, LEGACY_CONSENT_KEY, recordConsent } from "./diagnosis-consent";
+import { CONSENT_URL, hasConsent, LEGACY_CONSENT_KEY, recordConsent, sendLock } from "./diagnosis-consent";
 
 const answer = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
 
@@ -30,5 +30,38 @@ describe("recordConsent", () => {
     expect(await recordConsent(answer(200, { consentedAt: "t" }))).toBe(true);
     expect(await recordConsent(answer(401, {}))).toBe(false);
     expect(await recordConsent(vi.fn(() => Promise.reject(new Error("offline"))))).toBe(false);
+  });
+});
+
+describe("sendLock", () => {
+  it("lets one send through until it is released", () => {
+    const lock = sendLock();
+    expect(lock.claim()).toBe(true);
+    expect(lock.claim()).toBe(false);
+    lock.release();
+    expect(lock.claim()).toBe(true);
+  });
+
+  it("keeps a second send out while the first awaits the consent check", async () => {
+    const lock = sendLock();
+    let started = 0;
+    let answer!: (ok: boolean) => void;
+    const send = async () => {
+      if (!lock.claim()) return;
+      try {
+        if (!(await new Promise<boolean>((r) => (answer = r)))) return;
+        started++;
+      } finally {
+        lock.release();
+      }
+    };
+    const first = send();
+    await send();
+    answer(true);
+    await first;
+    expect(started).toBe(1);
+    await Promise.all([send(), Promise.resolve().then(() => answer(false))]);
+    expect(started).toBe(1);
+    expect(lock.claim()).toBe(true);
   });
 });
