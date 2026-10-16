@@ -204,8 +204,10 @@ async function buildPlan(deps: ExecuteDeps, claimed: ClaimedRun): Promise<Execut
   if (!resolved.ok) throw new VariableMissingError(resolved.missing);
   const variables: ExecutionPlan["variables"] = resolved.variables;
   const storageState = await requesterSession(deps, claimed);
+  const comparisonChild = (await deps.db.run.findUnique({ where: { id: claimed.id }, select: { comparisonId: true } }))?.comparisonId != null;
   return {
     ...(storageState ? { storageState } : {}),
+    ...(comparisonChild ? { a11ySnapshot: true } : {}),
     runId: claimed.id,
     baseUrl: snapshot.environment.baseUrl,
     steps: snapshot.scenario.steps,

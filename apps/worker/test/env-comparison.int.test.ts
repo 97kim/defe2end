@@ -142,7 +142,7 @@ describeDb("environment comparison", () => {
     await getDb().stepResult.updateMany({ where: { runId: runIds[1], stepId: "shot-b" }, data: { render: { ...RENDER, browserVersion: "141.0" } } });
     const again = await recompareComparison(getDb(), s.workspaceId, comparisonId, 100);
     expect(again.ok).toBe(true);
-    expect(await runComparisonJob(getDb(), storage, (again as { claim: never }).claim)).toBe(true);
+    expect(await runComparisonJob(getDb(), storage, (again as { ok: true; claim: never }).claim)).toBe(true);
     const round2 = await getDb().envComparison.findUniqueOrThrow({ where: { id: comparisonId }, include: { steps: { where: { round: 2 }, orderBy: { stepId: "asc" } } } });
     expect(round2).toMatchObject({ round: 2, tolerance: 100, screenVerdict: "incomparable", structureVerdict: "incomparable" });
     expect(round2.steps[0]).toMatchObject({ screenVerdict: "same" });
@@ -200,7 +200,7 @@ describeDb("environment comparison", () => {
     const first = await recompareComparison(getDb(), s.workspaceId, comparisonId);
     expect((await recompareComparison(getDb(), s.workspaceId, comparisonId)).ok).toBe(false);
     expect(await cancelComparison(getDb(), s.workspaceId, comparisonId, s.userId)).toMatchObject({ ok: false, code: "conflict" });
-    expect(await runComparisonJob(getDb(), storage, (first as { claim: never }).claim)).toBe(true);
+    expect(await runComparisonJob(getDb(), storage, (first as { ok: true; claim: never }).claim)).toBe(true);
     expect((await recompareComparison(getDb(), s.workspaceId, comparisonId, 101)).ok).toBe(false);
     expect(await recompareComparison(getDb(), "other-ws", comparisonId)).toMatchObject({ ok: false, code: "not_found" });
   });

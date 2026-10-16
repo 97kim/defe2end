@@ -159,6 +159,8 @@ export const executionPlanSchema = z.strictObject({
   }),
   /** Login session put into every attempt's new browser context. Memory only, like `variables`. */
   storageState: storageStateSchema.optional(),
+  /** Environment comparison child (stage 7 section 6): an accessibility snapshot after every screenshot. */
+  a11ySnapshot: z.boolean().optional(),
 });
 export type ExecutionPlan = z.infer<typeof executionPlanSchema>;
 

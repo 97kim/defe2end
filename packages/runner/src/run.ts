@@ -27,7 +27,9 @@ import {
   type StepOutcome,
   type StepResultStatus,
   type StopCause,
+  splitSelectorList,
 } from "@defe2end/shared";
+import { captureA11ySnapshot } from "./a11y-snapshot.js";
 import type { Locator, Page, Video } from "playwright";
 import { ACTIONS, autoScroll, classify, scrollPlan, StepFailure, StepWarning, type ActionContext, type UploadFile } from "./actions.js";
 import { launchBrowser, type RunBrowser } from "./browser.js";
@@ -295,6 +297,12 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       await emit({ type: "artifact", artifact: await writer.complete() });
     };
 
+    /** A screenshot step's picture; a comparison child adds its accessibility snapshot right after. */
+    const saveStepScreenshot = async (name: string, stepIndex: number, extraMask?: string) => {
+      await saveScreenshot(name, stepIndex, extraMask);
+      if (plan.a11ySnapshot) await saveA11ySnapshot(session.active, plan, secrets, extraMask, stepIndex, storeBytes, log);
+    };
+
     for (let index = 0; index < plan.steps.length; index++) {
       const step = plan.steps[index]!;
       if (stopReason()) {
@@ -304,7 +312,7 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       const startedAt = new Date();
       session.currentIndex = index;
       await emit({ type: "stepStarted", index, stepId: step.id, action: step.action, startedAt: startedAt.toISOString() });
-      const outcome = await runStep(step, index, session, plan, opts, saveScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, secretMasks);
+      const outcome = await runStep(step, index, session, plan, opts, saveStepScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, secretMasks);
       if (outcome.limit) runError = { code: "artifact_limit", message: outcome.limit.message };
 
       if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError) {
@@ -561,4 +569,25 @@ function stoppedMessage(reason: AbortReason): string {
 
 function firstLine(err: unknown): string {
   return (err instanceof Error ? err.message : String(err)).split("\n")[0]!;
+}
+
+/** Comparison child: the masked accessibility snapshot right after the screenshot; none when masking fails. */
+async function saveA11ySnapshot(
+  page: Page,
+  plan: ExecutionPlan,
+  secrets: Iterable<string>,
+  stepMask: string | undefined,
+  index: number,
+  store: (kind: ArtifactKind, name: string, bytes: Uint8Array, stepIndex?: number) => Promise<void>,
+  log: (level: "info" | "warn" | "error", message: string, stepIndex?: number) => Promise<void>,
+): Promise<void> {
+  const siteSelectors = (plan as { masking?: { selectors?: string[] } }).masking?.selectors ?? [];
+  const selectors = [...siteSelectors, ...splitSelectorList(stepMask ?? "")];
+  // `secrets` already holds the session's values.
+  const result = await captureA11ySnapshot(page, { selectors, secrets });
+  if (!result.ok) {
+    await log("warn", `Structure snapshot not collected: ${result.reason}`, index);
+    return;
+  }
+  await store("a11y_snapshot", `step-${index + 1}`, new TextEncoder().encode(result.text), index);
 }
