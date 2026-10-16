@@ -10,7 +10,7 @@ defE2End는 Postgres 옆에 컨테이너 세 개로 돌아요. `web`(화면·API
 
 ## 1. compose 파일 받기
 
-GitHub Releases에서 버전(`X.Y.Z`)을 고르세요. 이미지는 버전 태그(`X.Y.Z`, `X.Y`)로만 올라가고 `latest`는 없어요.
+GitHub Releases에서 버전(`X.Y.Z`)을 고르세요. 이미지는 정확한 버전 태그(`X.Y.Z`, 시험 릴리스는 `X.Y.Z-rc.N`)로만 올라가고 `X.Y`나 `latest` 태그는 없어요. `DEFE2END_VERSION` 하나로 세 이미지를 같은 버전에 고정해요.
 
 ```sh
 git clone --depth 1 --branch v1.0.0 https://github.com/97kim/defe2end.git
