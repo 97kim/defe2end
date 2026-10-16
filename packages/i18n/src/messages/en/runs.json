@@ -269,5 +269,38 @@
       "runs": "Runs",
       "lastFailed": "Last failure"
     }
+  },
+  "visual": {
+    "verdict": {
+      "created": "First baseline",
+      "match": "Matches baseline",
+      "shifted": "Slight shift",
+      "changed": "Changed",
+      "size_mismatch": "Size differs",
+      "skipped": "Not compared",
+      "incomparable": "Not comparable"
+    },
+    "createdNote": "Saved as the first baseline.",
+    "skippedNote": "The baseline couldn't be read or the comparison failed, so this screenshot wasn't compared.",
+    "incomparableNote": "Captured under other conditions than the baseline ({conditions}), so it wasn't compared.",
+    "conditions": {
+      "browserVersion": "browser version",
+      "deviceScaleFactor": "device scale factor",
+      "viewport": "viewport",
+      "fontSet": "fonts",
+      "maskingPolicyVersion": "masking rules"
+    },
+    "difference": "Difference {diff}",
+    "shiftDifference": "{diff} after a {x},{y} px shift",
+    "baselineVersion": "Baseline v{version}",
+    "olderBaseline": "Judged with v{version}; the current baseline is v{current}.",
+    "baseline": "Baseline",
+    "current": "Current",
+    "diff": "Diff",
+    "approve": "Approve as new baseline",
+    "approving": "Approving…",
+    "approved": "Approved as baseline v{version}.",
+    "approveConflict": "The baseline changed in the meantime. Reload the page and try again.",
+    "approveFailed": "Couldn't approve: {message}"
   }
 }

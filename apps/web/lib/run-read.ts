@@ -12,6 +12,10 @@ import {
   STEP_MAX_ATTEMPTS,
   type Step,
   type StepResultStatus,
+  renderConditionDiff,
+  renderConditionsSchema,
+  type RenderConditions,
+  type VisualVerdict,
 } from "@defe2end/shared";
 import { z } from "zod";
 import { ApiError } from "./api";
@@ -20,7 +24,7 @@ import { computeRunChanges, type ComparableRun, type RunChange } from "./run-cha
 
 const runInclude = {
   desktopDevice: { select: { label: true } },
-  stepResults: { orderBy: { index: "asc" } },
+  stepResults: { orderBy: { index: "asc" }, include: { visualBaselineVersion: { select: { id: true, version: true, render: true, baseline: { select: { currentVersion: true } } } } } },
   artifacts: { orderBy: { createdAt: "asc" } },
   requestedBy: { select: { name: true } },
 } satisfies Prisma.RunInclude;
@@ -88,7 +92,24 @@ export interface RunStepView {
     actual: string | null;
     /** A changing action was repeated without undoing the page (contract section 1). Set by the runner. */
     possibleDuplicate: boolean;
+    /** Stage 7 section 4: visual regression of a screenshot step, null when it wasn't judged. */
+    visual?: StepVisualView | null;
   } | null;
+}
+
+export interface StepVisualView {
+  stepResultId: string;
+  /** The server's verdict when it compared again, else the runner's. */
+  verdict: VisualVerdict;
+  diffPercent: number | null;
+  shiftDiffPercent: number | null;
+  shift: { x: number; y: number } | null;
+  /** The baseline version this result was judged with (kept even after newer approvals). */
+  baseline: { version: number; currentVersion: number; url: string } | null;
+  /** `incomparable`: which render conditions differ. */
+  differs: (keyof RenderConditions)[];
+  /** Approval is possible: render conditions were recorded. */
+  approvable: boolean;
 }
 
 export interface ArtifactView {
@@ -153,6 +174,28 @@ function toSummary(row: SummaryRow | RunRow): RunSummary {
   };
 }
 
+export function baselineUrl(slug: string, runId: string, versionId: string): string {
+  return `/api/w/${slug}/runs/${runId}/baselines/${versionId}`;
+}
+
+function visualView(slug: string, runId: string, r: RunRow["stepResults"][number]): StepVisualView | null {
+  const verdict = r.visualServerVerdict ?? r.visualVerdict;
+  if (!verdict) return null;
+  const render = renderConditionsSchema.safeParse(r.render);
+  const v = r.visualBaselineVersion;
+  const baseRender = v ? renderConditionsSchema.safeParse(v.render) : null;
+  return {
+    stepResultId: r.id,
+    verdict,
+    diffPercent: r.visualDiffPercent,
+    shiftDiffPercent: r.visualShiftDiffPercent,
+    shift: (r.visualShift as { x: number; y: number } | null) ?? null,
+    baseline: v ? { version: v.version, currentVersion: v.baseline.currentVersion, url: baselineUrl(slug, runId, v.id) } : null,
+    differs: verdict === "incomparable" && render.success && baseRender?.success ? renderConditionDiff(baseRender.data, render.data) : [],
+    approvable: render.success,
+  };
+}
+
 export function artifactUrl(slug: string, runId: string, artifactId: string): string {
   return `/api/w/${slug}/runs/${runId}/artifacts/${artifactId}`;
 }
@@ -185,6 +228,7 @@ function toDetail(slug: string, row: RunRow): RunDetail {
               expected: r.expected,
               actual: r.actual,
               possibleDuplicate: (r as { possibleDuplicate?: boolean }).possibleDuplicate ?? false,
+              visual: visualView(slug, row.id, r),
             }
           : null,
       };

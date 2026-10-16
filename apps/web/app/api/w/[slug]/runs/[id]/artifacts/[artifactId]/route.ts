@@ -24,7 +24,7 @@ export const GET = route<{ slug: string; id: string; artifactId: string }>({ act
     headers: {
       "content-type": artifact.contentType,
       "content-length": String(artifact.sizeBytes),
-      "content-disposition": `${artifact.kind === "screenshot" ? "inline" : "attachment"}; filename="${filename}"`,
+      "content-disposition": `${artifact.kind === "screenshot" || artifact.kind === "visual_diff" ? "inline" : "attachment"}; filename="${filename}"`,
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; sandbox",
       "cache-control": "private, no-store",
