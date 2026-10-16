@@ -6,7 +6,10 @@ export * from "./generated/prisma/client.js";
 
 export function createDbClient(databaseUrl = process.env.DATABASE_URL): PrismaClient {
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl, application_name: APP_CONNECTION_NAME }) });
+  // Named and kept open while idle, so `backup` can see a running web or worker by its connections.
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: databaseUrl, application_name: APP_CONNECTION_NAME, idleTimeoutMillis: 0 }),
+  });
 }
 export * from "./instance-state.js";
 export * from "./runs.js";

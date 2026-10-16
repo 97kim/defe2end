@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Backup and restore for a defE2End server (stage 8 contract section 4). Runs inside the migrate image:
 //   docker compose stop web worker
-//   docker compose run --rm -v "$PWD/backups/<name>:/backup" migrate backup /backup
-//   docker compose run --rm -v "$PWD/backups/<name>:/backup" migrate restore /backup
-//   docker compose run --rm migrate resume-automation
+//   docker compose run --rm --no-deps -v "$PWD/backups/<name>:/backup" migrate backup /backup
+//   docker compose run --rm --no-deps -v "$PWD/backups/<name>:/backup" migrate restore /backup
+//   docker compose run --rm --no-deps migrate resume-automation
 // A backup directory holds `db.dump` (pg_dump custom format), `files/` (the file storage, one file per key)
 // and `manifest.json`. The encryption key and other secrets are never written: keep the key separately.
 import { spawn } from "node:child_process";
@@ -223,11 +223,15 @@ async function backup(dir) {
   const migration = applied.at(-1);
 
   // Web and worker must be stopped: a live app keeps writing files and rows the dump would not match.
-  const appConnections = Number(
-    await sql(
-      `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = '${APP_CONNECTION_NAME}'`,
-    ),
-  );
+  // A just-stopped app's connections take a moment to go: look again for a few seconds before refusing.
+  let appConnections = 0;
+  for (let i = 0; i < 10; i++) {
+    appConnections = Number(
+      await sql(`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = '${APP_CONNECTION_NAME}'`),
+    );
+    if (appConnections === 0) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
   if (appConnections > 0) {
     fail(`web or worker is still connected to the database (${appConnections} connections). Stop them first: docker compose stop web worker`);
   }
@@ -372,9 +376,9 @@ async function restore(dir, { withoutKey }) {
       `  ${manifest.files.count} files (${formatBytes(manifest.files.totalBytes)}), checksums verified`,
       "Automation is paused: schedules, notifications and queued runs wait. Runs that were going are ended as",
       "error(restore_interrupted), pending notifications as dead. Check the instance, then resume:",
-      "  docker compose run --rm migrate resume-automation",
+      "  docker compose run --rm --no-deps migrate resume-automation",
       withoutKey
-        ? "Restored without the original key: secret values and login sessions were dropped. Enter the secrets again; Slack webhook URLs can't be read and must be set again."
+        ? "Restored without the original key: secret values and login sessions were dropped. Enter the secrets again; notification webhook URLs can't be read and must be set again."
         : "Start web and worker with the same DEFE2END_ENCRYPTION_KEY.",
     ].join("\n"),
   );

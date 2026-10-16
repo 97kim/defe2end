@@ -73,13 +73,13 @@ JS
 cat "$WORK/seed.json"
 
 echo "== backup is refused while web and worker run"
-if compose run --rm -v "$BACKUP:/backup" migrate backup /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -v "$BACKUP:/backup" migrate backup /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "docker compose stop web worker" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 rm -rf "$BACKUP" && mkdir -p "$BACKUP" && chmod 777 "$BACKUP"
 
 echo "== backup with web and worker stopped"
 compose stop web worker
-compose run --rm -v "$BACKUP:/backup" migrate backup /backup
+compose run --rm --no-deps -T -v "$BACKUP:/backup" migrate backup /backup
 test -s "$BACKUP/db.dump" && test -s "$BACKUP/manifest.json"
 if grep -q "$KEY" "$BACKUP/manifest.json"; then echo "the encryption key leaked into manifest.json" >&2; exit 1; fi
 
@@ -90,14 +90,14 @@ compose up -d --wait postgres
 echo "== a backup from another version is refused"
 mkdir -p "$WORK/other" && cp -R "$BACKUP/." "$WORK/other/"
 sed 's/"appVersion": "[^"]*"/"appVersion": "0.0.0-other"/' "$BACKUP/manifest.json" > "$WORK/other/manifest.json"
-if compose run --rm -v "$WORK/other:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -v "$WORK/other:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "Restore with the image of version 0.0.0-other first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 
 echo "== restore into the empty stack"
-compose run --rm -v "$BACKUP:/backup:ro" migrate restore /backup
+compose run --rm --no-deps -T -v "$BACKUP:/backup:ro" migrate restore /backup
 
 echo "== a second restore is refused: the database is not empty"
-if compose run --rm -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "Restore needs an empty database" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 
 echo "== automation is paused after the restore"
@@ -108,7 +108,7 @@ import { createDbClient, isAutomationPaused } from "@defe2end/db";
 const db = createDbClient();
 if (!(await isAutomationPaused(db))) throw new Error("automation is not paused after restore");
 await db.$disconnect();'
-compose run --rm migrate resume-automation
+compose run --rm --no-deps -T migrate resume-automation
 
 echo "== check data, file and secret"
 compose exec -T -e SEED="$(cat "$WORK/seed.json")" -e OTHER_KEY="$OTHER_KEY" worker node --input-type=module - <<'JS'
@@ -137,20 +137,20 @@ curl -fsS -o /dev/null "http://localhost:$PORT/login"
 
 echo "== the web server refuses another key and says to restore the original"
 compose stop web
-if compose run --rm --no-deps -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "Restore the original key" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 
 echo "== restore with another key is refused; --without-key drops the secrets"
 compose down -v
 compose up -d --wait postgres
-if compose run --rm -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "not the key this backup was made with" "$WORK/out" || { cat "$WORK/out"; exit 1; }
-compose run --rm -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" -v "$BACKUP:/backup:ro" migrate restore --without-key /backup
+compose run --rm --no-deps -T -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" -v "$BACKUP:/backup:ro" migrate restore --without-key /backup
 nulls="$(compose exec -T postgres psql -U defe2end -d defe2end -At -c 'SELECT count(*) FROM "Variable" WHERE "isSecret" AND "valueEncrypted" IS NULL')"
 [ "$nulls" = "1" ] || { echo "the secret was not dropped ($nulls)" >&2; exit 1; }
 
 echo "== a restore left half done keeps web from starting"
 compose exec -T postgres psql -U defe2end -d defe2end -c 'UPDATE "InstanceSetting" SET "restoreInProgressAt" = now()'
-if compose run --rm --no-deps -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+if compose run --rm --no-deps -T -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "did not finish" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 echo "backup and restore passed"
