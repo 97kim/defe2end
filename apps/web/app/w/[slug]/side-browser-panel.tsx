@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Alert, Button } from "../../../components/ui";
 import { useDesktopBridge, type DesktopBridge } from "./scenarios/recorder-panel";
-import { sideBrowserOwner, subscribeSideBrowserOwner } from "./side-browser-owner";
+import { sideBrowserOwner, subscribeSideBrowserOwner, wireColumn } from "./side-browser-owner";
 
 // The side browser outside the editor (stage 6 contract section 5): when an AI browser tool asks for it and the
 // recorder panel isn't open, this column opens between the page and the chat panel, and the app draws the
@@ -39,37 +39,50 @@ function Column({ bridge, onClose }: { bridge: DesktopBridge; onClose: () => voi
   const [error, setError] = useState<string>();
   const slot = useRef<HTMLDivElement>(null);
 
+  const section = useRef<HTMLElement>(null);
+
   useEffect(() => {
-    const bounds = () => {
-      const r = slot.current?.getBoundingClientRect();
-      return r ? { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.max(0, r.width), height: Math.max(0, r.height) } : null;
-    };
-    const b = bounds();
-    if (b) void bridge.sideBrowser.open(undefined, b).catch(() => setError(t("error")));
-    const sync = () => {
-      const next = bounds();
-      if (next) void bridge.sideBrowser.setBounds(next);
-    };
-    // The column keeps its width, but moves when the chat panel or the page beside it changes size.
-    const observer = new ResizeObserver(sync);
-    if (slot.current) observer.observe(slot.current);
-    const main = document.querySelector("main");
-    if (main) observer.observe(main);
-    window.addEventListener("resize", sync);
     const offAi = bridge.mcp?.onAiActive?.(setAiActive);
+    const teardown = wireColumn({
+      bridge,
+      bounds: () => {
+        const r = slot.current?.getBoundingClientRect();
+        return r ? { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.max(0, r.width), height: Math.max(0, r.height) } : null;
+      },
+      onError: () => setError(t("error")),
+      watch: (sync) => {
+        // The column keeps its width but moves when the page beside it resizes, when the chat panel opens or
+        // closes, and while it slides in (a transform, which ResizeObserver doesn't see: sync after it ends).
+        const resize = new ResizeObserver(sync);
+        if (slot.current) resize.observe(slot.current);
+        const main = document.querySelector("main");
+        if (main) resize.observe(main);
+        const siblings = new MutationObserver(sync);
+        const row = section.current?.parentElement;
+        if (row) siblings.observe(row, { childList: true });
+        const el = section.current;
+        el?.addEventListener("transitionend", sync);
+        el?.addEventListener("animationend", sync);
+        window.addEventListener("resize", sync);
+        return () => {
+          resize.disconnect();
+          siblings.disconnect();
+          el?.removeEventListener("transitionend", sync);
+          el?.removeEventListener("animationend", sync);
+          window.removeEventListener("resize", sync);
+        };
+      },
+    });
     return () => {
       offAi?.();
-      observer.disconnect();
-      window.removeEventListener("resize", sync);
-      // Handed to the recorder panel: it already drew the browser over its own area.
-      if (sideBrowserOwner() === "workspace") void bridge.sideBrowser.close().catch(() => {});
+      teardown();
     };
-    // Opened once per column.
+    // Opened once per column; later AI requests open it again through wireColumn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridge]);
 
   return (
-    <section aria-label={t("title")} style={{ width: COLUMN_WIDTH }} className="t-panel-slide sticky top-0 flex h-screen shrink-0 flex-col border-l border-border bg-bg-surface">
+    <section ref={section} aria-label={t("title")} style={{ width: COLUMN_WIDTH }} className="t-panel-slide sticky top-0 flex h-screen shrink-0 flex-col border-l border-border bg-bg-surface">
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <h2 className="flex-1 text-title-sm text-text-primary">{t("title")}</h2>
         {aiActive && (
