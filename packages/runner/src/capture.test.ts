@@ -32,7 +32,7 @@ describe("screenshots", () => {
     expect(await pixelAt(files[0]!.bytes, Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2))).toEqual(MAGENTA);
   });
 
-  it("records 'not collected' instead of an unmasked image when a secret can't be pointed at", async () => {
+  it("fails the screenshot step instead of an unmasked image when a secret can't be pointed at", async () => {
     const { files, logs, results } = await execute(
       makePlan(fixtures.url, [
         open,
@@ -40,16 +40,14 @@ describe("screenshots", () => {
         { id: "type", action: "pressKey", value: "{{KEY}}" },
         { id: "shot", action: "screenshot", name: "after typing" },
         failing,
-      ], { variables: { KEY: { value: "Q", secret: true } } }),
+      ], { variables: { KEY: { value: "Q", secret: true } }, a11ySnapshot: true }),
     );
-    expect(results.map((r) => r.status)).toEqual(["passed", "passed", "passed", "passed", "failed"]);
-    expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
-    expect(logs).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^Screenshot "after typing" not collected: a secret was typed without a target field$/),
-        expect.stringMatching(/^Screenshot "step-5-failure" not collected/),
-      ]),
-    );
+    expect(results.map((r) => r.status)).toEqual(["passed", "passed", "passed", "failed", "skipped"]);
+    expect(results[3]!.errorMessage).toBe("Masking could not be applied, so the screenshot was not taken");
+    // Neither the image, nor the structure capture, nor a failure screenshot without the step's mask.
+    expect(files.filter((f) => f.kind === "screenshot" || f.kind === "a11y_snapshot")).toEqual([]);
+    expect(logs).toContainEqual(expect.stringMatching(/^Screenshot "after typing" not collected: a secret was typed without a target field$/));
+    expect(logs.some((l) => l.includes("step-4-failure"))).toBe(false);
   });
 
   it("masks a secret field that renamed itself after typing, in a screenshot step and a failure screenshot", async () => {
@@ -71,7 +69,7 @@ describe("screenshots", () => {
     expect(logs.filter((l) => l.includes("not collected"))).toEqual([]);
   });
 
-  it("records 'not collected' when a secret field can no longer be found for masking", async () => {
+  it("fails the screenshot step when a secret field can no longer be found for masking", async () => {
     const { files, logs, results } = await execute(
       makePlan(fixtures.url, [
         { id: "open", action: "goto", url: "/rename.html" },
@@ -80,14 +78,10 @@ describe("screenshots", () => {
         failing,
       ], { variables: { TOKEN: { value: SECRET, secret: true } } }),
     );
-    expect(results.map((r) => r.status)).toEqual(["passed", "passed", "passed", "failed"]);
+    expect(results.map((r) => r.status)).toEqual(["passed", "passed", "failed", "skipped"]);
     expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
-    expect(logs).toEqual(
-      expect.arrayContaining([
-        'Screenshot "sealed" not collected: a field holding a secret could not be located for masking',
-        'Screenshot "step-4-failure" not collected: a field holding a secret could not be located for masking',
-      ]),
-    );
+    expect(logs).toContain('Screenshot "sealed" not collected: a field holding a secret could not be located for masking');
+    expect(logs.some((l) => l.includes("step-3-failure"))).toBe(false);
   });
 
   it("checks every secret field on its own: one field that can't be found stops the screenshot", async () => {

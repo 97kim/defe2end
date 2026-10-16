@@ -49,11 +49,12 @@ function installPageMask(config: PageMaskConfig): void {
   const roots = new Set<Document | ShadowRoot>();
 
   const looksPersonal = (text: string): boolean => {
-    for (const re of PATTERNS) {
+    for (const [i, re] of PATTERNS.entries()) {
       re.lastIndex = 0;
       for (const m of text.matchAll(re)) {
-        // Short digit runs (prices, dates, counts) are never personal data on their own.
-        if (/\d/.test(m[0]) && m[0].replace(/\D/g, "").length <= 8) continue;
+        // Short digit runs (prices, dates, counts) are never personal data on their own. Emails (pattern 0)
+        // are always hidden, digits or not.
+        if (i > 0 && m[0].replace(/\D/g, "").length <= 8) continue;
         return true;
       }
     }
