@@ -10,6 +10,8 @@ cd "$(dirname "$0")/.."
 PROJECT="${PROJECT:-defe2end-backup-test}"
 PORT="${WEB_PORT:-3917}"
 WORK="$(mktemp -d)"
+# The image's user (another uid on Linux runners) must reach the backup folders below: let it through, not list.
+chmod 711 "$WORK"
 BACKUP="$WORK/backup"
 mkdir -p "$BACKUP"
 # The migrate image runs as a non-root user; the bind-mounted directory must be writable for it.
@@ -22,6 +24,7 @@ POSTGRES_PASSWORD=backup-$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
 BETTER_AUTH_SECRET=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 DEFE2END_ENCRYPTION_KEY=$KEY
 ENV
+chmod 600 "$WORK/env"
 compose() { docker compose -p "$PROJECT" --env-file "$WORK/env" -f docker-compose.build.yml "$@"; }
 # Backup files belong to the image's user and are 0600, so the host user may not read or remove them (on Linux
 # runners the uids differ); anything that touches them goes through a container as that user.
