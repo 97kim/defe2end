@@ -52,6 +52,20 @@ services:
       OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      # Public URL for links the server builds (API responses, notifications); empty = none.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      # Desktop app: oldest version accepted (empty = the built-in rule), where to download a newer one, and
+      # extra sign-in origins its window may open (comma-separated).
+      DESKTOP_MIN_VERSION: ${DESKTOP_MIN_VERSION:-}
+      DESKTOP_DOWNLOAD_URL: ${DESKTOP_DOWNLOAD_URL:-}
+      DESKTOP_EXTRA_AUTH_ORIGINS: ${DESKTOP_EXTRA_AUTH_ORIGINS:-}
+      ATTACHMENT_MAX_MB: ${ATTACHMENT_MAX_MB:-20}
+      ATTACHMENT_WORKSPACE_MAX_MB: ${ATTACHMENT_WORKSPACE_MAX_MB:-500}
+      SSE_MAX_CONNECTIONS_PER_USER: ${SSE_MAX_CONNECTIONS_PER_USER:-8}
+      # Shared with the worker: runs sent to desktop apps and the free-space check before new runs.
+      RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-900000}
+      RUN_RETRY_ATTEMPTS: ${RUN_RETRY_ATTEMPTS:-2}
+      MIN_FREE_DISK_MB: ${MIN_FREE_DISK_MB:-1024}
     ports:
       - "${WEB_PORT:-3000}:3000"
     volumes:
@@ -77,6 +91,8 @@ services:
       <<: [*database-url, *storage-dir]
       # The worker decrypts secret variables right before a run.
       DEFE2END_ENCRYPTION_KEY: ${DEFE2END_ENCRYPTION_KEY:?set DEFE2END_ENCRYPTION_KEY in .env}
+      # Run links in notifications; empty = messages go out without them.
+      PUBLIC_URL: ${PUBLIC_URL:-}
       # Worker settings (see .env.example); defaults match apps/worker/src/config.ts.
       WORKER_ID: ${WORKER_ID:-}
       HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-10000}
