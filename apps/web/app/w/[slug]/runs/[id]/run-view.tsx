@@ -37,7 +37,7 @@ import {
 } from "../run-ui";
 import { useHydrated } from "../use-hydrated";
 import { DiagnosisPanel } from "./diagnosis-panel";
-import { VisualApproveContext, VisualBadge, VisualDetail } from "./visual-result";
+import { hasVisualWarningText, VisualApproveContext, VisualBadge, VisualDetail, VisualWarningText } from "./visual-result";
 import { PopIn, SwapIn } from "../../../../transitions/motion";
 
 type T = ReturnType<typeof useTranslations<"runs">>;
@@ -607,8 +607,14 @@ function StepRow({ run, step, status, shots, diff }: { run: RunDetail; step: Run
             )}
             {r?.errorMessage && (
               <p className={`rounded-control border bg-bg-surface px-3 py-2 font-mono text-code break-words whitespace-pre-wrap ${failed ? "border-fail/30 text-fail" : status === "warning" ? "border-warn/30 text-warn" : "border-border-strong text-text-primary"}`}>
-                {r.errorCode && <span className="font-semibold">{r.errorCode}: </span>}
-                {r.errorMessage}
+                {hasVisualWarningText(r.visual) ? (
+                  <VisualWarningText visual={r.visual} />
+                ) : (
+                  <>
+                    {r.errorCode && <span className="font-semibold">{r.errorCode}: </span>}
+                    {r.errorMessage}
+                  </>
+                )}
                 {r.attempts > 0 && <span className="mt-1 block text-text-muted">{t("steps.attempts", { count: r.attempts })}</span>}
               </p>
             )}

@@ -24,7 +24,7 @@ import { computeRunChanges, type ComparableRun, type RunChange } from "./run-cha
 
 const runInclude = {
   desktopDevice: { select: { label: true } },
-  stepResults: { orderBy: { index: "asc" }, include: { visualBaselineVersion: { select: { id: true, version: true, render: true, baseline: { select: { currentVersion: true } } } } } },
+  stepResults: { orderBy: { index: "asc" }, include: { visualBaselineVersion: { select: { id: true, version: true, render: true, width: true, height: true, baseline: { select: { currentVersion: true } } } } } },
   artifacts: { orderBy: { createdAt: "asc" } },
   requestedBy: { select: { name: true } },
 } satisfies Prisma.RunInclude;
@@ -105,7 +105,7 @@ export interface StepVisualView {
   shiftDiffPercent: number | null;
   shift: { x: number; y: number } | null;
   /** The baseline version this result was judged with (kept even after newer approvals). */
-  baseline: { version: number; currentVersion: number; url: string } | null;
+  baseline: { version: number; currentVersion: number; url: string; width: number; height: number } | null;
   /** `incomparable`: which render conditions differ. */
   differs: (keyof RenderConditions)[];
   /**
@@ -195,7 +195,7 @@ function visualView(slug: string, run: { id: string; scenarioId: string | null; 
     diffPercent: r.visualDiffPercent,
     shiftDiffPercent: r.visualShiftDiffPercent,
     shift: (r.visualShift as { x: number; y: number } | null) ?? null,
-    baseline: v ? { version: v.version, currentVersion: v.baseline.currentVersion, url: baselineUrl(slug, runId, v.id) } : null,
+    baseline: v ? { version: v.version, currentVersion: v.baseline.currentVersion, url: baselineUrl(slug, runId, v.id), width: v.width, height: v.height } : null,
     differs: verdict === "incomparable" && render.success && baseRender?.success ? renderConditionDiff(baseRender.data, render.data) : [],
     approvable:
       render.success &&

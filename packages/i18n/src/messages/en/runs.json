@@ -301,6 +301,12 @@
     "approving": "Approving…",
     "approved": "Approved as baseline v{version}.",
     "approveConflict": "The baseline changed in the meantime. Reload the page and try again.",
-    "approveFailed": "Couldn't approve: {message}"
+    "approveFailed": "Couldn't approve: {message}",
+    "warning": {
+      "changed": "The screenshot differs from the baseline by {diff}. If the change is intended, approve it as the new baseline.",
+      "changedShifted": "The screenshot differs from the baseline by {diff} ({shifted} after the shift search). If the change is intended, approve it as the new baseline.",
+      "sizeMismatch": "The screenshot size differs from the baseline ({width}×{height}). If the change is intended, approve it as the new baseline.",
+      "sizeMismatchUnknown": "The screenshot size differs from the baseline. If the change is intended, approve it as the new baseline."
+    }
   }
 }
