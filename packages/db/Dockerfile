@@ -12,7 +12,7 @@ FROM base AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /repo
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs tsconfig.base.json ./
 COPY packages/db packages/db
 # db depends on shared (workspace package); migrate never imports it, but pnpm deploy needs it to resolve.
 COPY packages/shared packages/shared

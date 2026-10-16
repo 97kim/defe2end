@@ -6,7 +6,7 @@ FROM ${NODE_IMAGE} AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /repo
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs tsconfig.base.json ./
 COPY packages/db packages/db
 COPY packages/shared packages/shared
 COPY packages/i18n packages/i18n

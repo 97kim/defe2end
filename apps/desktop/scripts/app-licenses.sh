@@ -24,10 +24,26 @@ set -- --extra "electron@$electron_version=MIT AND BSD-3-Clause=$electron_dir=ht
 for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
   [ -d "$dir" ] || continue
   base="$(basename "$dir")"; name="${base%-*}"; rev="${base##*-}"
-  lic="$(find "$dir" -maxdepth 4 \( -iname 'LICENSE*' -o -iname 'COPYING*' \) | head -n 1)"
-  if [ "$name" = ffmpeg ]; then id="LGPL-2.1-or-later"; src="https://git.ffmpeg.org/ffmpeg.git"; else id="BSD-3-Clause"; src="https://chromium.googlesource.com/chromium/src"; fi
-  [ -n "$lic" ] || { echo "no license file in $dir" >&2; exit 1; }
-  set -- "$@" --extra "playwright-$name@r$rev=$id=$lic=$src"
+  if [ "$name" = ffmpeg ]; then
+    lic="$(find "$dir" -maxdepth 4 \( -iname 'LICENSE*' -o -iname 'COPYING*' \) | head -n 1)"
+    [ -n "$lic" ] || { echo "no license file in $dir" >&2; exit 1; }
+    # The binary names its source tag (nX.Y.Z) in its version string; read it without running the binary.
+    bin="$(find "$dir" -maxdepth 2 -type f -name 'ffmpeg*' | head -n 1)"
+    tag="$(LC_ALL=C grep -a -o -m1 'n[0-9][0-9.]*-playwright-build-[0-9]*' "$bin" | head -n 1 | cut -d- -f1)"
+    [ -n "$tag" ] || { echo "no ffmpeg version in $bin" >&2; exit 1; }
+    set -- "$@" --extra "ffmpeg@${tag#n}=LGPL-2.1-or-later=$lic=https://git.ffmpeg.org/gitweb/ffmpeg.git/tree/refs/tags/$tag"
+  else
+    # The browser build carries only its ABOUT notice (full credits are built into the browser); the Chromium
+    # license of the same version comes from scripts/licenses/chromium@<version>.txt, copied from upstream.
+    version="$(find "$dir" -type d | grep -Eo '/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 | tr -d /)"
+    upstream="../../scripts/licenses/chromium@$version.txt"
+    [ -n "$version" ] && [ -f "$upstream" ] || { echo "no Chromium license for version '$version' ($upstream); copy it from the Chromium source tag" >&2; exit 1; }
+    mkdir -p "$WORK/chromium"
+    cp "$upstream" "$WORK/chromium/LICENSE"
+    about="$(find "$dir" -maxdepth 3 -name ABOUT | head -n 1)"
+    [ -n "$about" ] && cp "$about" "$WORK/chromium/NOTICE.ABOUT"
+    set -- "$@" --extra "chromium@$version=BSD-3-Clause=$WORK/chromium=https://chromium.googlesource.com/chromium/src/+/refs/tags/$version"
+  fi
 done
 rm -rf licenses; mkdir licenses
 node ../../scripts/third-party-notices.mjs --sbom "$WORK/sbom.json" --root "$WORK/app" \
