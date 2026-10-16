@@ -21,14 +21,21 @@ export function oldestSupportedApp(server: string): string {
 }
 
 /**
- * Whether a server of version `server` takes this app: at least `minimum` and the same major version. An
- * unreleased build (`0.0.0`, nothing stamped) only checks the minimum.
+ * Whether a server of version `server` takes this app. The built-in rule compares major and minor only, so
+ * pre-release tags never matter (server `1.0.0-rc.1` takes app `1.0.0-rc.1`). `configuredMinimum`
+ * (`DESKTOP_MIN_VERSION`) is an extra, exact limit on top. An unreleased server (`0.0.0`, nothing stamped)
+ * applies only the configured limit.
  */
-export function appVersionSupported(app: string, server: string, minimum = oldestSupportedApp(server)): boolean {
-  if (compareVersions(app, minimum) < 0) return false;
+export function appVersionSupported(app: string, server: string, configuredMinimum?: string): boolean {
+  if (configuredMinimum && compareVersions(app, configuredMinimum) < 0) return false;
   if (server === "0.0.0") return true;
-  const major = (v: string) => /^(\d+)\./.exec(v)?.[1];
-  return major(app) !== undefined && major(app) === major(server);
+  const parts = (v: string) => {
+    const m = /^(\d+)\.(\d+)\.\d+/.exec(v);
+    return m ? { major: Number(m[1]), minor: Number(m[2]) } : null;
+  };
+  const a = parts(app);
+  const s = parts(server);
+  return !!a && !!s && a.major === s.major && a.minor >= s.minor - 1;
 }
 
 /** Oldest app the server accepts when `DESKTOP_MIN_VERSION` is unset. */

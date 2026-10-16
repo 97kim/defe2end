@@ -48,7 +48,7 @@ export async function openDesktopStream(request: Request): Promise<StreamOpen> {
   if (!principal) return { ok: false, response: desktopError(401, "unauthenticated") };
   const client = parseDesktopClientHeader(request.headers.get(DESKTOP_HEADERS.client));
   const minimum = desktopMinVersion();
-  if (!client || client.protocol !== DESKTOP_PROTOCOL_VERSION || !appVersionSupported(client.app, SERVER_VERSION, minimum)) {
+  if (!client || client.protocol !== DESKTOP_PROTOCOL_VERSION || !appVersionSupported(client.app, SERVER_VERSION, process.env.DESKTOP_MIN_VERSION?.trim() || undefined)) {
     return { ok: false, response: desktopError(426, "app_update_required", { minimum, ...(process.env.DESKTOP_DOWNLOAD_URL ? { downloadUrl: process.env.DESKTOP_DOWNLOAD_URL } : {}) }) };
   }
   const capabilities = parseCommaList(request.headers.get(DESKTOP_HEADERS.capabilities));

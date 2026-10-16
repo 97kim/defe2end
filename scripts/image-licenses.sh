@@ -1,28 +1,24 @@
 #!/bin/sh
-# SBOM and third-party notices for one server image, and the Dockerfile that bakes them into /licenses/
-# (stage 8 contract section 3). Builds the image for one platform, scans the final image (OS packages, fonts,
-# npm packages, binaries) with syft, collects license texts from its file system, and writes
-# <Dockerfile>.release: the original with its last stage named `app`, plus a stage copying the `licenses` build
-# context to /licenses/. The release build then runs <Dockerfile>.release with --build-context licenses=<out>.
-# Also writes <out dir>.files.txt, the image's file list, for the release clean-room check.
-# Usage: scripts/image-licenses.sh <web|worker|migrate> <Dockerfile> <out dir> [platform]   (from the repo root)
+# Builds one server image for one architecture with its SBOM and third-party notices in /licenses/ (stage 8
+# contract section 3). The candidate image is built once, without cache; that same image is scanned with syft
+# (OS packages, fonts, npm packages, binaries) and its file system read for license texts; the notices are then
+# added as one more layer on top of it. So the SBOM describes exactly the image that is published, per
+# architecture. Uses the plain docker builder (`docker build`), which sees the local candidate.
+# Writes <out>/licenses/{sbom.cdx.json,THIRD_PARTY_NOTICES.txt} and <out>/files.txt (the image's file list, for
+# the release clean-room check), and tags the result <tag>.
+# Usage: scripts/image-licenses.sh <web|worker|migrate> <Dockerfile> <out dir> <platform> <tag> [label=value]...
 set -eu
-NAME="$1"; DOCKERFILE="$2"; OUT="$3"; PLATFORM="${4:-linux/amd64}"
-VERSION="$(node -p 'require("./package.json").version || require("./apps/web/package.json").version')"
-mkdir -p "$OUT"
+NAME="$1"; DOCKERFILE="$2"; OUT="$3"; PLATFORM="$4"; TAG="$5"; shift 5
+VERSION="$(node -p 'require("./apps/web/package.json").version')"
+CANDIDATE="defe2end-$NAME:candidate"
+mkdir -p "$OUT/licenses"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; docker rm -f "defe2end-scan-$NAME" >/dev/null 2>&1 || true' EXIT
 
-awk -v last="$(grep -n '^FROM ' "$DOCKERFILE" | tail -n 1 | cut -d: -f1)" \
-  'NR == last { print $0 " AS app"; next } { print }' "$DOCKERFILE" > "$DOCKERFILE.release"
-printf '\n# Release only: SBOM and notices of this image (scripts/image-licenses.sh).\nFROM app\nCOPY --from=licenses / /licenses/\n' >> "$DOCKERFILE.release"
-cp "$DOCKERFILE.dockerignore" "$DOCKERFILE.release.dockerignore"
-
-docker buildx build --platform "$PLATFORM" --target app --load -t "defe2end-$NAME:scan" -f "$DOCKERFILE.release" .
-syft scan "docker:defe2end-$NAME:scan" -q -o "cyclonedx-json=$WORK/sbom.json"
-docker create --name "defe2end-scan-$NAME" "defe2end-$NAME:scan" >/dev/null
+docker build --no-cache --pull --platform "$PLATFORM" -t "$CANDIDATE" -f "$DOCKERFILE" .
+syft scan "docker:$CANDIDATE" -q -o "cyclonedx-json=$WORK/sbom.json"
+docker create --platform "$PLATFORM" --name "defe2end-scan-$NAME" "$CANDIDATE" >/dev/null
 mkdir "$WORK/root"; docker export "defe2end-scan-$NAME" | tar -x -C "$WORK/root" 2>/dev/null || true
-
-(cd "$WORK/root" && find . -xdev -type f | LC_ALL=C sort) > "$OUT.files.txt"
+(cd "$WORK/root" && find . -xdev -type f | LC_ALL=C sort) > "$OUT/files.txt"
 
 EXTRA=""
 if [ "$NAME" = worker ]; then
@@ -31,8 +27,14 @@ if [ "$NAME" = worker ]; then
   rev="${shell##*-}"
   lic="$(find "$shell" -maxdepth 2 -iname 'LICENSE*' | head -n 1)"
   [ -n "$lic" ] || { echo "no license file in $shell" >&2; exit 1; }
-  EXTRA="chromium-headless-shell@r$rev=BSD-3-Clause=$lic"
+  EXTRA="chromium-headless-shell@r$rev=BSD-3-Clause=$lic=https://chromium.googlesource.com/chromium/src"
 fi
 node scripts/third-party-notices.mjs --sbom "$WORK/sbom.json" --root "$WORK/root" \
-  --out "$OUT/THIRD_PARTY_NOTICES.txt" --sbom-out "$OUT/sbom.cdx.json" \
-  --title "defE2End $NAME image $VERSION" ${EXTRA:+--extra "$EXTRA"}
+  --out "$OUT/licenses/THIRD_PARTY_NOTICES.txt" --sbom-out "$OUT/licenses/sbom.cdx.json" \
+  --title "defE2End $NAME image $VERSION ($PLATFORM)" ${EXTRA:+--extra "$EXTRA"}
+
+# The notices layer on top of the scanned candidate, nothing rebuilt.
+labels=""
+for l in "$@"; do labels="$labels --label $l"; done
+# shellcheck disable=SC2086
+printf 'FROM %s\nCOPY . /licenses/\n' "$CANDIDATE" | docker build --pull=false --platform "$PLATFORM" $labels -t "$TAG" -f - "$OUT/licenses"
