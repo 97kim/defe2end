@@ -40,26 +40,32 @@ if [ "$NAME" = web ]; then
   TEXTS="$WORK/texts"
 fi
 
-EXTRA=""; EXTRA2=""
+EXTRA=""; EXTRA2=""; EXTRA3=""; EXTRA4=""
 if [ "$NAME" = worker ]; then
   # Playwright's Chromium headless shell is a plain directory, not a package the scanner reports.
   shell="$(ls -d "$WORK"/root/ms-playwright/chromium_headless_shell-* | head -n 1)"
   rev="${shell##*-}"
+  # The real Chromium version for that build revision, from the browsers.json of the Playwright in the image.
+  bj="$(find "$WORK/root/app/node_modules" -path '*/playwright-core/browsers.json' | head -n 1)"
+  cver="$(node -e 'const b=require(process.argv[1]).browsers.find((x)=>x.name==="chromium-headless-shell"&&x.revision===process.argv[2]);process.stdout.write(b?.browserVersion??"")' "$bj" "$rev")"
+  [ -n "$cver" ] || { echo "no Chromium version for headless shell r$rev in $bj" >&2; exit 1; }
   lic="$(find "$shell" -maxdepth 2 -iname 'LICENSE*' | head -n 1)"
   [ -n "$lic" ] || { echo "no license file in $shell" >&2; exit 1; }
-  EXTRA="chromium-headless-shell@r$rev=BSD-3-Clause=$lic=https://chromium.googlesource.com/chromium/src"
+  EXTRA="chromium-headless-shell@$cver=BSD-3-Clause=$lic=https://chromium.googlesource.com/chromium/src/+/refs/tags/$cver"
   # Playwright's ffmpeg (video recording) comes along with the browser install; its binary names its source tag.
   ff="$(ls -d "$WORK"/root/ms-playwright/ffmpeg-* 2>/dev/null | head -n 1)"
   if [ -n "$ff" ]; then
     fflic="$(find "$ff" -maxdepth 1 -iname 'COPYING*' | head -n 1)"
     tag="$(LC_ALL=C grep -a -o -m1 'n[0-9][0-9.]*-playwright-build-[0-9]*' "$ff"/ffmpeg-* | head -n 1 | cut -d- -f1)"
     [ -n "$fflic" ] && [ -n "$tag" ] || { echo "no license or version for $ff" >&2; exit 1; }
+    libs="$(sh scripts/ffmpeg-libs.sh "$(ls "$ff"/ffmpeg-* | head -n 1)")"
+    EXTRA3="$(echo "$libs" | sed -n 1p)"; EXTRA4="$(echo "$libs" | sed -n 2p)"
     EXTRA2="ffmpeg@${tag#n}=LGPL-2.1-or-later=$fflic=https://git.ffmpeg.org/gitweb/ffmpeg.git/tree/refs/tags/$tag"
   fi
 fi
 node scripts/third-party-notices.mjs --sbom "$WORK/sbom.json" --root "$WORK/root" \
   --out "$OUT/licenses/THIRD_PARTY_NOTICES.txt" --sbom-out "$OUT/licenses/sbom.cdx.json" \
-  --title "defE2End $NAME image $VERSION ($PLATFORM)" ${EXTRA:+--extra "$EXTRA"} ${EXTRA2:+--extra "$EXTRA2"} ${TEXTS:+--texts-root "$TEXTS"}
+  --title "defE2End $NAME image $VERSION ($PLATFORM)" ${EXTRA:+--extra "$EXTRA"} ${EXTRA2:+--extra "$EXTRA2"} ${EXTRA3:+--extra "$EXTRA3"} ${EXTRA4:+--extra "$EXTRA4"} ${TEXTS:+--texts-root "$TEXTS"}
 
 # The notices layer on top of the scanned candidate, nothing rebuilt.
 labels=""

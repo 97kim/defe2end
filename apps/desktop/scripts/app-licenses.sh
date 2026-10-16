@@ -31,6 +31,8 @@ for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
     bin="$(find "$dir" -maxdepth 2 -type f -name 'ffmpeg*' | head -n 1)"
     tag="$(LC_ALL=C grep -a -o -m1 'n[0-9][0-9.]*-playwright-build-[0-9]*' "$bin" | head -n 1 | cut -d- -f1)"
     [ -n "$tag" ] || { echo "no ffmpeg version in $bin" >&2; exit 1; }
+    libs="$(sh ../../scripts/ffmpeg-libs.sh "$bin")"
+    set -- "$@" --extra "$(echo "$libs" | sed -n 1p)" --extra "$(echo "$libs" | sed -n 2p)"
     set -- "$@" --extra "ffmpeg@${tag#n}=LGPL-2.1-or-later=$lic=https://git.ffmpeg.org/gitweb/ffmpeg.git/tree/refs/tags/$tag"
   else
     # The browser build carries only its ABOUT notice (full credits are built into the browser); the Chromium
