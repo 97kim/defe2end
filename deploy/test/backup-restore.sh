@@ -22,7 +22,7 @@ POSTGRES_PASSWORD=backup-$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
 BETTER_AUTH_SECRET=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 DEFE2END_ENCRYPTION_KEY=$KEY
 ENV
-compose() { docker compose -p "$PROJECT" --env-file "$WORK/env" -f docker-compose.yml "$@"; }
+compose() { docker compose -p "$PROJECT" --env-file "$WORK/env" -f docker-compose.build.yml "$@"; }
 cleanup() { compose down -v --rmi local >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT INT TERM
 
