@@ -45,3 +45,22 @@ it("documents every passed-through worker setting in .env.example", () => {
   const missing = keysRead().filter((k) => !["DEFE2END_ENCRYPTION_KEY", "STORAGE_DIR"].includes(k) && !new RegExp(`^${k}=`, "m").test(example));
   expect(missing).toEqual([]);
 });
+
+it("keeps the source-build compose file in step with the image one", () => {
+  const load = (name: string) => parse(readFileSync(new URL(name, deploy), "utf8"), { merge: true }) as { services: Record<string, Record<string, unknown>> };
+  const images = load("docker-compose.yml").services;
+  const builds = load("docker-compose.build.yml").services;
+  expect(Object.keys(builds)).toEqual(Object.keys(images));
+  for (const [name, service] of Object.entries(images)) {
+    const { image, ...rest } = service;
+    const { build, ...restBuilt } = builds[name]!;
+    if (name === "postgres") expect(build).toBeUndefined();
+    else {
+      expect(image).toBe(`ghcr.io/97kim/defe2end-${name}:\${DEFE2END_VERSION:?set DEFE2END_VERSION in .env}`);
+      expect(build).toBeDefined();
+      expect(restBuilt).toEqual(rest);
+      continue;
+    }
+    expect(restBuilt).toEqual({ image, ...rest });
+  }
+});

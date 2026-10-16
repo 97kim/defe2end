@@ -12,8 +12,8 @@ import {
   touchDeviceConnection,
 } from "@defe2end/db";
 import {
+  appVersionSupported,
   can,
-  compareVersions,
   DESKTOP_HEADERS,
   DESKTOP_PROTOCOL_VERSION,
   DESKTOP_TIMINGS,
@@ -22,6 +22,7 @@ import {
   missingCapabilities,
   runOptionsSchema,
   runSnapshotSchema,
+  VERSIONS,
   type DesktopStreamMessage,
   type Role,
   type RunTrigger,
@@ -36,7 +37,8 @@ import { AuthSessionMissingError, buildRunMessage, VariableMissingError } from "
 
 export const PERMISSION_LOST_MESSAGE = "The requester can no longer run scenarios in this workspace, so the run was not sent.";
 
-const SERVER_VERSION = process.env.npm_package_version || "0.0.0";
+// Stamped from the release tag (scripts/stamp-version.mjs); `npm_package_version` is unset in the image.
+const SERVER_VERSION = VERSIONS.server;
 
 export type StreamOpen = { ok: false; response: Response } | { ok: true; session: DesktopStreamSession };
 
@@ -46,7 +48,7 @@ export async function openDesktopStream(request: Request): Promise<StreamOpen> {
   if (!principal) return { ok: false, response: desktopError(401, "unauthenticated") };
   const client = parseDesktopClientHeader(request.headers.get(DESKTOP_HEADERS.client));
   const minimum = desktopMinVersion();
-  if (!client || client.protocol !== DESKTOP_PROTOCOL_VERSION || compareVersions(client.app, minimum) < 0) {
+  if (!client || client.protocol !== DESKTOP_PROTOCOL_VERSION || !appVersionSupported(client.app, SERVER_VERSION, minimum)) {
     return { ok: false, response: desktopError(426, "app_update_required", { minimum, ...(process.env.DESKTOP_DOWNLOAD_URL ? { downloadUrl: process.env.DESKTOP_DOWNLOAD_URL } : {}) }) };
   }
   const capabilities = parseCommaList(request.headers.get(DESKTOP_HEADERS.capabilities));

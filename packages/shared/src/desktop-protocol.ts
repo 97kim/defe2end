@@ -6,10 +6,33 @@ import { executionPlanSchema, stepOutcomeSchema, storageStateSchema } from "./ex
 import { COMPARISON_SIDES, maskingSettingsSchema, renderConditionsSchema, VISUAL_RUNTIMES } from "./screen-quality.js";
 import { RUN_TERMINAL_STATUSES, RUN_STATUSES, stopCauseSchema } from "./run-status.js";
 import { STEP_ACTIONS } from "./steps.js";
+import { VERSIONS } from "./version.js";
 
 export const DESKTOP_PROTOCOL_VERSION = 1;
-/** Oldest app the server accepts when `DESKTOP_MIN_VERSION` is unset (server N → app N-1, plan section 6). */
-export const DESKTOP_MIN_VERSION_DEFAULT = "0.0.0";
+/**
+ * App–server rule (stage 8 contract section 1, plan section 6 "server N takes app N-1", N = minor): same major
+ * version, and the app's minor at least the server's minor − 1. Pre-release tags of the server don't matter.
+ * The protocol version and capability checks still decide what the app can actually run.
+ */
+export function oldestSupportedApp(server: string): string {
+  const m = /^(\d+)\.(\d+)\.\d+/.exec(server);
+  if (!m) return "0.0.0";
+  return `${Number(m[1])}.${Math.max(Number(m[2]) - 1, 0)}.0`;
+}
+
+/**
+ * Whether a server of version `server` takes this app: at least `minimum` and the same major version. An
+ * unreleased build (`0.0.0`, nothing stamped) only checks the minimum.
+ */
+export function appVersionSupported(app: string, server: string, minimum = oldestSupportedApp(server)): boolean {
+  if (compareVersions(app, minimum) < 0) return false;
+  if (server === "0.0.0") return true;
+  const major = (v: string) => /^(\d+)\./.exec(v)?.[1];
+  return major(app) !== undefined && major(app) === major(server);
+}
+
+/** Oldest app the server accepts when `DESKTOP_MIN_VERSION` is unset. */
+export const DESKTOP_MIN_VERSION_DEFAULT = oldestSupportedApp(VERSIONS.server);
 
 /** Timings (contract sections 3.2 and 4.2). */
 export const DESKTOP_TIMINGS = {

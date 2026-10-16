@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data/storage && chown node:node /data/storage
 # Non-root, with the Chromium sandbox on (CHROMIUM_SANDBOX defaults to true). The sandbox needs user namespaces,
-# which Docker's default seccomp profile refuses; deploy/docker-compose.yml applies deploy/chromium-seccomp.json.
+# which Docker's default seccomp profile refuses; the deploy/ compose files apply deploy/chromium-seccomp.json.
 # Check it with: docker compose exec worker node dist/sandbox-check.js
 USER node
 ENTRYPOINT ["/usr/bin/tini", "--"]

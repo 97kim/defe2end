@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   compareVersions,
+  appVersionSupported,
+  oldestSupportedApp,
   DEFAULT_DEVICE,
   DESKTOP_CAPABILITIES,
   DESKTOP_PROTOCOL_VERSION,
@@ -105,5 +107,31 @@ describe("requests", () => {
     expect(desktopCompleteRequestSchema.safeParse({ ...body, stopCause: { type: "infra", code: "browser_launch_failed" } }).success).toBe(true);
     expect(desktopCompleteRequestSchema.safeParse({ ...body, stopCause: { type: "infra", code: "nope" } }).success).toBe(false);
     expect(desktopCompleteRequestSchema.safeParse({ ...body, claimToken: undefined }).success).toBe(false);
+  });
+});
+
+describe("app–server version rule (same major, app minor ≥ server minor − 1)", () => {
+  it("derives the oldest app from the server's minor", () => {
+    expect(oldestSupportedApp("1.3.2")).toBe("1.2.0");
+    expect(oldestSupportedApp("1.1.0-rc.2")).toBe("1.0.0");
+    expect(oldestSupportedApp("2.0.1")).toBe("2.0.0");
+    expect(oldestSupportedApp("0.0.0")).toBe("0.0.0");
+  });
+  it("takes apps of the previous minor and newer, within the major", () => {
+    expect(appVersionSupported("1.1.4", "1.2.0")).toBe(true);
+    expect(appVersionSupported("1.2.0", "1.2.0")).toBe(true);
+    expect(appVersionSupported("1.5.0", "1.2.0")).toBe(true);
+    expect(appVersionSupported("0.0.0", "0.0.0")).toBe(true);
+    // An unreleased server (nothing stamped) skips the major check.
+    expect(appVersionSupported("1.0.0", "0.0.0")).toBe(true);
+  });
+  it("refuses older minors, older pre-releases and other majors", () => {
+    expect(appVersionSupported("1.0.9", "1.2.0")).toBe(false);
+    expect(appVersionSupported("1.1.0-rc.1", "1.2.0")).toBe(false);
+    expect(appVersionSupported("1.9.0", "2.0.0")).toBe(false);
+    expect(appVersionSupported("2.0.0", "1.2.0")).toBe(false);
+  });
+  it("still honours a higher configured minimum", () => {
+    expect(appVersionSupported("1.1.4", "1.2.0", "1.2.0")).toBe(false);
   });
 });
