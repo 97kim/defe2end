@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Console</title></head>
+<body>
+<h1>Console</h1>
+<!-- On load: a console error and warning naming ?token= and an email, a 404 fetch carrying the token, an uncaught
+     exception. #burst logs ?burst= more errors; #open opens this page again as a popup (?from=popup). -->
+<button id="burst" type="button">Burst</button>
+<button id="open" type="button">Open</button>
+<script>
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token") ?? "";
+  const from = params.get("from") ?? "page";
+  console.error(`Login failed (${from}) for kim@example.com with token ${token}`);
+  console.warn(`Deprecated call (${from})`);
+  console.log("plain log, not collected");
+  fetch(`/missing-${from}.json?token=${encodeURIComponent(token)}`).catch(() => {});
+  setTimeout(() => { throw new Error(`Uncaught boom (${from})`); }, 0);
+  document.getElementById("burst").addEventListener("click", () => {
+    for (let i = 0; i < Number(params.get("burst") ?? 0); i++) console.error(`burst ${i} ` + "x".repeat(600));
+  });
+  document.getElementById("open").addEventListener("click", () => open(`/console.html?from=popup&token=${encodeURIComponent(token)}`, "_blank"));
+</script>
+</body>
+</html>

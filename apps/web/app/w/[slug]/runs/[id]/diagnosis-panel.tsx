@@ -6,7 +6,7 @@ import { useAiBridge, useProviderStatus, type AiEvent, type Provider } from "../
 import { ProviderNotices, useRefusalText, useTurnErrorText } from "../../../../../components/ai/provider-notice";
 import { Alert, Button, Dialog } from "../../../../../components/ui";
 import type { DiagnosisView } from "../../../../../lib/diagnoses";
-import { buildDiagnosisPrompt, diagnosisThreadId, pickDiagnosisArtifacts } from "../../../../../lib/diagnosis-input";
+import { buildDiagnosisPrompt, diagnosisLogText, diagnosisThreadId, pickDiagnosisArtifacts } from "../../../../../lib/diagnosis-input";
 import type { RunDetail } from "../../../../../lib/run-read";
 import { SparklesIcon } from "../run-ui";
 
@@ -24,7 +24,7 @@ async function artifactText(url: string): Promise<string | null> {
 async function preparePrompt(run: RunDetail, attempt: number): Promise<string | null> {
   const { dom, logs } = pickDiagnosisArtifacts(run.steps, run.artifacts, attempt);
   const [domSummary, ...logTexts] = await Promise.all([dom ? artifactText(dom.url) : Promise.resolve(null), ...logs.map((l) => artifactText(l.url))]);
-  const logText = logTexts.filter((x): x is string => !!x).join("\n") || null;
+  const logText = diagnosisLogText(logs.map((l, i) => ({ stepIndex: l.stepIndex, text: logTexts[i] ?? null })));
   return buildDiagnosisPrompt({ scenarioName: run.scenarioName, baseUrl: run.baseUrl, steps: run.steps, runError: run.errorMessage, logText, domSummary });
 }
 
