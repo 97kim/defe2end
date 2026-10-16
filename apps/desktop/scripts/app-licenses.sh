@@ -58,7 +58,7 @@ for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
     about="$(find "$dir" -maxdepth 3 -name ABOUT | head -n 1)"
     [ -n "$about" ] && cp "$about" "$WORK/chromium/NOTICE.ABOUT"
     set -- "$@" --extra "chromium@$version=BSD-3-Clause=$WORK/chromium=https://chromium.googlesource.com/chromium/src/+/refs/tags/$version" \
-      --extra-note "chromium@$version=$(sh ../../scripts/playwright-build-note.sh chromium "$rev" "$PW_VERSION")"
+      --extra-note "chromium@$version=$(sh ../../scripts/playwright-build-note.sh chromium "$rev" "$PW_VERSION" "$version")"
   fi
 done
 rm -rf licenses; mkdir licenses
