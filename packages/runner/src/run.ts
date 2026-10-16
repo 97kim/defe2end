@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ArtifactLimitError,
+  MASKING_POLICY_VERSION,
   executionPlanSchema,
   isAbortReason,
   judgeRun,
@@ -39,6 +40,8 @@ import { domSummary } from "./dom-summary.js";
 import { captureMasked, DEFAULT_MASKING, forceMask, MASKING_FAILED_MESSAGE, pageMaskScript } from "./masking.js";
 import { hostResolverRules, isBlockedUrl } from "./network.js";
 import { RunSession } from "./session.js";
+import { collectRenderConditions } from "./render-conditions.js";
+import { judgeScreenshot, type VisualRegressionOptions } from "./visual-regression.js";
 
 export interface RunPlanOptions {
   sink: ArtifactSink;
@@ -62,6 +65,8 @@ export interface RunPlanOptions {
   userCanClose?: boolean;
   /** File for an `attachment:<name>` uploadFile token (the worker reads the version pinned in the snapshot); `undefined` fails the step. */
   resolveAttachment?(name: string): Promise<UploadFile | undefined>;
+  /** Stage 7 section 4: judge passed screenshot steps against the pinned baselines. Unset = no visual regression. */
+  visual?: VisualRegressionOptions;
   /** Stage 7 section 5: the run's masking settings (snapshot or app message). Absent = on, no site selectors. */
   masking?: MaskingSettings;
 }
@@ -254,7 +259,10 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
         return;
       }
       await storeBytes("screenshot", mask(name), shot.png, stepIndex);
+      lastCapture = { bytes: shot.png, page };
     };
+    /** The latest screenshot of the step in progress, for visual regression (stage 7 section 4). */
+    let lastCapture: { bytes: Uint8Array; page: Page } | undefined;
 
     /**
      * A mask for every element on `page` that was given a secret. Each element still in the document gets a
@@ -318,6 +326,34 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       if (plan.a11ySnapshot) await saveA11ySnapshot(session.active, masking, secrets, extraMask, stepIndex, storeBytes, log);
     };
 
+    /** Judges a passed screenshot step; a `changed`/`size_mismatch` makes it a warning, nothing here fails the run. */
+    const judgeVisual = async (visual: VisualRegressionOptions, step: Step, index: number, capture: { bytes: Uint8Array; page: Page }, result: StepOutcome) => {
+      let render;
+      try {
+        const r = await collectRenderConditions(capture.page, { runtime: visual.runtime, maskPolicyVersion: MASKING_POLICY_VERSION, browserVersion, ...(visual.imageFonts ? { imageFonts: visual.imageFonts } : {}) });
+        render = { browserVersion: r.browserVersion, deviceScaleFactor: r.deviceScaleFactor, viewport: r.viewport, fontSet: r.fontSet, maskingPolicyVersion: Number(r.maskPolicyVersion) };
+      } catch (err) {
+        await log("warn", `Visual comparison skipped: ${firstLine(err)}`, index);
+        result.visualVerdict = "skipped";
+        return;
+      }
+      const judged = await judgeScreenshot({ png: capture.bytes, render, pinned: visual.baselineFor(step.id), readBaseline: (id) => visual.readBaseline(id), ...(step.threshold === undefined ? {} : { tolerance: step.threshold }) });
+      Object.assign(result, judged.fields);
+      if (judged.diffPng) {
+        try {
+          await storeBytes("visual_diff", `step-${index + 1}-diff`, judged.diffPng, index);
+        } catch (err) {
+          if (err instanceof ArtifactLimitError) runError = { code: "artifact_limit", message: err.message };
+          await log("warn", `Visual diff not collected: ${firstLine(err)}`, index);
+        }
+      }
+      if (judged.warning) {
+        result.status = "warning";
+        result.errorCode = "warning";
+        result.errorMessage = judged.warning;
+      }
+    };
+
     for (let index = 0; index < plan.steps.length; index++) {
       const step = plan.steps[index]!;
       if (stopReason()) {
@@ -327,6 +363,7 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       const startedAt = new Date();
       session.currentIndex = index;
       await emit({ type: "stepStarted", index, stepId: step.id, action: step.action, startedAt: startedAt.toISOString() });
+      lastCapture = undefined;
       const maskNow = async (page: Page) => {
         await forceMask(page, masking).catch(() => {});
         return secretMasks(page);
@@ -378,6 +415,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
         durationMs: Date.now() - startedAt.getTime(),
       };
       if (outcome.attempts > 1) result.retried = true;
+      if (opts.visual && step.action === "screenshot" && outcome.status === "passed" && lastCapture && !runError) {
+        await judgeVisual(opts.visual, step, index, lastCapture, result);
+      }
       if (outcome.failure) {
         if (outcome.failure.code) result.errorCode = outcome.failure.code;
         result.errorMessage = mask(outcome.failure.message);

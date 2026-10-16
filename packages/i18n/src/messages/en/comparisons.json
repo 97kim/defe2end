@@ -74,7 +74,7 @@
     "showAll": "Show all {count} lines",
     "loading": "Loading…",
     "error": "Error: {message}",
-    "kind": { "moved": "Moved", "left_only": "Left only", "right_only": "Right only", "changed": "Changed", "same": "" },
+    "kind": { "moved": "Moved", "left_only": "Left only", "right_only": "Right only", "changed": "Changed" },
     "explain": {
       "same": "Within the tolerance.",
       "different": "Over the tolerance, or the structure differs.",

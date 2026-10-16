@@ -3,7 +3,10 @@
 import { Readable } from "node:stream";
 import {
   artifactFits,
+  checkReportedVisualVerdict,
   completeDesktopRun,
+  pinnedBaselines,
+  settleCreatedBaseline,
   desktopHeartbeat,
   failDesktopRun,
   recordDesktopAttempt,
@@ -28,7 +31,7 @@ import {
   type DesktopCompleteRequest,
   type StepOutcome,
 } from "@defe2end/shared";
-import { artifactKey } from "@defe2end/shared/server";
+import { artifactKey, BASELINE_MAX_BYTES, storageBaselineFiles } from "@defe2end/shared/server";
 import { getDb } from "../db";
 import { getStorage } from "../storage";
 import { DesktopHttpError, desktopError, type DesktopPrincipal } from "./auth";
@@ -101,6 +104,24 @@ export async function recordSteps(
   const attempt = Math.max(0, ...body.events.map((e) => (e.type === "stepStarted" ? e.attempt : e.result.attempt)));
   if (attempt > 0 && !(await recordDesktopAttempt(db, runId, body.claimToken, attempt))) throw leaseLost();
   if (finished.length > 0 && !(await recordDesktopSteps(db, runId, body.claimToken, finished))) throw leaseLost();
+  await settleVisualSteps(runId, finished);
+}
+
+/**
+ * Stage 7 section 4: an app's visual verdict is kept only when its baseline version is pinned for this run and
+ * key (else `skipped`); a `created` one makes the first baseline, or is compared on the server if another run
+ * made it first. Runs while the pins still exist, before the run is completed.
+ */
+async function settleVisualSteps(runId: string, steps: DesktopStepInput[]): Promise<void> {
+  const db = getDb();
+  for (const step of steps) {
+    if (!step.visualVerdict) continue;
+    const row = await db.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { id: true, visualVerdict: true, visualServerVerdict: true, visualBaselineVersionId: true } });
+    if (!row || row.visualServerVerdict) continue;
+    if (row.visualVerdict === "created") {
+      if (!row.visualBaselineVersionId) await settleCreatedBaseline(db, storageBaselineFiles(getStorage()), row.id);
+    } else await checkReportedVisualVerdict(db, row.id);
+  }
 }
 
 /**
@@ -110,6 +131,12 @@ export async function recordSteps(
 export async function completeRun(principal: DesktopPrincipal, runId: string, body: DesktopCompleteRequest) {
   await ownedDesktopRun(principal, runId);
   const judged = judgeRun(body.steps, body.stopCause);
+  // Steps reported only here (the live reports are best effort) get their visual verdict checked first.
+  const visualSteps = body.steps.filter((s) => s.visualVerdict).map(toStepInput);
+  if (visualSteps.length > 0) {
+    if (!(await recordDesktopSteps(getDb(), runId, body.claimToken, visualSteps))) throw leaseLost();
+    await settleVisualSteps(runId, visualSteps);
+  }
   const mismatch = judged.status !== body.verdict;
   const result = await completeDesktopRun(getDb(), runId, body.claimToken, body.steps.map(toStepInput), {
     status: mismatch ? "error" : judged.status,
@@ -128,9 +155,9 @@ export async function completeRun(principal: DesktopPrincipal, runId: string, bo
   return { status: mismatch ? "error" : judged.status };
 }
 
-/** `step-{n}` for screenshots, DOM summaries, accessibility snapshots and a step's log, `main`/`popup-N` for video, `trace`, `log` for the run-wide log. */
+/** `step-{n}` for screenshots, DOM summaries, visual diffs, accessibility snapshots and a step's log, `main`/`popup-N` for video, `trace`, `log` for the run-wide log. */
 export function parseArtifactKey(kind: string, key: string): { kind: ArtifactKind; stepIndex?: number } | null {
-  if (kind === "screenshot" || kind === "dom_summary" || kind === "a11y_snapshot") {
+  if (kind === "screenshot" || kind === "dom_summary" || kind === "visual_diff" || kind === "a11y_snapshot") {
     const m = /^step-(\d{1,4})$/.exec(key);
     return m ? { kind, stepIndex: Number(m[1]) } : null;
   }
@@ -157,7 +184,7 @@ export async function putArtifact(principal: DesktopPrincipal, runId: string, pa
   const length = Number(request.headers.get("content-length"));
   if (!request.headers.get("content-length") || !Number.isInteger(length) || length < 0) throw new DesktopHttpError(desktopError(411, "invalid_request", { message: "Content-Length is required" }));
   const limit = RUN_LIMITS.runArtifactBytes;
-  if (parsed.kind === "screenshot" && length > SCREENSHOT_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
+  if ((parsed.kind === "screenshot" || parsed.kind === "visual_diff") && length > SCREENSHOT_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
   if (parsed.kind === "dom_summary" && length > DOM_SUMMARY_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
   if (parsed.kind === "log" && parsed.stepIndex !== undefined && length > STEP_LOG_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
   const key = { kind: parsed.kind, attempt, name: params.key, stepIndex: parsed.stepIndex };
@@ -201,4 +228,20 @@ export async function getAttachment(principal: DesktopPrincipal, runId: string, 
   if (!row) throw new DesktopHttpError(desktopError(404, "not_found"));
   const stream = await getStorage().get(row.storageKey);
   return new Response(Readable.toWeb(stream) as ReadableStream, { headers: { "content-type": row.contentType, "content-length": String(row.sizeBytes) } });
+}
+
+/**
+ * A baseline image pinned for this run (stage 7 section 4): the run must be this device's and user's and still
+ * running, and the version in its pin list. Streamed from storage, never a redirect; capped at 20MB.
+ */
+export async function getBaseline(principal: DesktopPrincipal, runId: string, versionId: string): Promise<Response> {
+  const run = await ownedDesktopRun(principal, runId, "read");
+  if (run.status !== "running") throw new DesktopHttpError(desktopError(404, "not_found"));
+  const pin = (await pinnedBaselines(getDb(), run.id)).find((p) => p.versionId === versionId);
+  if (!pin) throw new DesktopHttpError(desktopError(404, "not_found"));
+  const stat = await getStorage().stat(pin.storageKey);
+  if (!stat) throw new DesktopHttpError(desktopError(404, "not_found"));
+  if (stat.sizeBytes > BASELINE_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
+  const stream = await getStorage().get(pin.storageKey);
+  return new Response(Readable.toWeb(stream) as ReadableStream, { headers: { "content-type": "image/png", "content-length": String(stat.sizeBytes), "cache-control": "no-store" } });
 }

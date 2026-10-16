@@ -43,6 +43,11 @@ export function attachmentKey(workspaceId: string): string {
   return `workspaces/${workspaceId}/attachments/${randomUUID()}.bin`.toLowerCase();
 }
 
+/** `workspaces/<ws>/baselines/<random>.png`: a visual baseline copy, kept apart from run artifacts. */
+export function baselineKey(workspaceId: string): string {
+  return `workspaces/${workspaceId}/baselines/${randomUUID()}.png`.toLowerCase();
+}
+
 /** Local volume shared by web and worker. Refuses keys that leave the root, including through symlinks. */
 export class LocalStorage implements StorageDriver {
   private realRoot?: Promise<string>;

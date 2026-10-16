@@ -74,7 +74,7 @@
     "showAll": "전체 {count}줄 보기",
     "loading": "불러오는 중…",
     "error": "오류: {message}",
-    "kind": { "moved": "이동", "left_only": "왼쪽에만", "right_only": "오른쪽에만", "changed": "변경", "same": "" },
+    "kind": { "moved": "이동", "left_only": "왼쪽에만", "right_only": "오른쪽에만", "changed": "변경" },
     "explain": {
       "same": "허용 오차 안이에요.",
       "different": "허용 오차를 넘었거나 구조가 달라요.",

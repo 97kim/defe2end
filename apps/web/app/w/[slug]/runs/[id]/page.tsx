@@ -14,17 +14,18 @@ export default async function RunPage({ params }: { params: Promise<{ slug: stri
   if (!(await canInWorkspace(slug, "run.read"))) notFound();
   const run = await findRunDetail(workspace, id);
   if (!run) notFound();
-  const [changes, canCancel, canCreate, t, tNav] = await Promise.all([
+  const [changes, canCancel, canCreate, canApprove, t, tNav] = await Promise.all([
     getRunChanges(workspace.id, run.id),
     canInWorkspace(slug, "run.cancel"),
     canInWorkspace(slug, "run.create"),
+    canInWorkspace(slug, "scenario.write"),
     getTranslations("runs"),
     getTranslations("common"),
   ]);
   return (
     <>
       <PageHeader crumbs={[workspace.name, tNav("nav.runs")]} title={t("pageTitle", { id: shortRunId(run.id) })} />
-      <RunView slug={slug} initial={run} changes={changes} can={{ cancel: canCancel, create: canCreate }} rerunFailedAvailable={WRITE_ENDPOINTS.rerunFailed.available} />
+      <RunView slug={slug} initial={run} changes={changes} can={{ cancel: canCancel, create: canCreate, approveBaseline: canApprove }} rerunFailedAvailable={WRITE_ENDPOINTS.rerunFailed.available} />
     </>
   );
 }

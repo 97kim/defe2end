@@ -93,7 +93,7 @@ export function StructureDiff({ url }: { url: string }) {
       <pre className="max-h-[32rem] overflow-auto rounded-card border border-border bg-bg-subtle p-3 font-mono text-meta">
         {shown.map((e, i) => (
           <div key={i} className={ENTRY_CLASS[e.kind]}>
-            <span className="inline-block w-24 select-none text-text-muted">{e.kind === "moved" ? `${t("kind.moved")} (${e.at === "left" ? t("left") : t("right")})` : t(`kind.${e.kind}`)}</span>
+            <span className="inline-block w-24 select-none text-text-muted">{e.kind === "same" ? "" : e.kind === "moved" ? `${t("kind.moved")} (${e.at === "left" ? t("left") : t("right")})` : t(`kind.${e.kind}`)}</span>
             {e.kind === "changed" ? `${e.leftText} → ${e.rightText}` : e.text}
           </div>
         ))}

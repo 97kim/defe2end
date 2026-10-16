@@ -3,6 +3,7 @@
 // after the lock; now() would be the transaction start) for leases, and conditional updates so a terminal
 // status never changes again. Creation lives in the web app (it re-validates the session actor) and takes
 // `lockWorkspaceRuns` first. Lock order is always workspace → run.
+import { dropRunBaselinePins, serverVerdictWarnings } from "./visual-baselines.js";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
 import { settleGroup } from "./groups.js";
@@ -190,6 +191,12 @@ export interface StepResultInput {
   expected?: string;
   actual?: string;
   possibleDuplicate?: boolean;
+  visualVerdict?: "created" | "match" | "shifted" | "changed" | "size_mismatch" | "skipped" | "incomparable";
+  visualDiffPercent?: number;
+  visualShiftDiffPercent?: number;
+  visualShift?: { x: number; y: number };
+  visualBaselineVersionId?: string;
+  render?: Prisma.InputJsonValue;
 }
 
 export async function recordStepResult(db: Db, runId: string, claimToken: string, step: StepResultInput): Promise<boolean> {
@@ -239,18 +246,19 @@ export async function finishRun(db: Db, runId: string, claimToken: string, verdi
     db,
     runId,
     claimToken,
-    (tx) => tx.$queryRaw<{ groupRunId: string | null }[]>`
+    async (tx) => tx.$queryRaw<{ groupRunId: string | null }[]>`
       UPDATE "Run" SET
         status = ${verdict.status}::"RunStatus",
         "errorCode" = ${verdict.errorCode ?? null},
         "errorMessage" = ${verdict.errorMessage ?? null},
         "browserVersion" = ${verdict.browserVersion ?? null},
-        "warningCount" = ${verdict.warningCount ?? 0}::int,
+        "warningCount" = ${(verdict.warningCount ?? 0) + (await serverVerdictWarnings(tx, runId))}::int,
         "passedAfterRetry" = ${verdict.passedAfterRetry ?? false},
         "finishedAt" = clock_timestamp(),
         "leaseExpiresAt" = NULL
       WHERE id = ${runId}
       RETURNING "groupRunId"`.then(async (rows) => {
+      await dropRunBaselinePins(tx, runId);
       // A group child's message is its group's (settleGroup); a single run's is decided here, same transaction.
       if (!rows[0]?.groupRunId) await enqueueFinishNotifications(tx, { runIds: [runId] });
       return rows;
@@ -315,6 +323,9 @@ export async function reapExpiredRuns(db: Db): Promise<string[]> {
       WHERE status = 'running' AND "leaseExpiresAt" <= clock_timestamp()
       RETURNING id, "groupRunId"`;
     await enqueueFinishNotifications(tx, { runIds: rows.filter((r) => !r.groupRunId).map((r) => r.id) });
+    // Pins of runs that ended outside finishRun (lost lease, cancel while queued, reconciliation): their step
+    // results are written, so the pins can go (stage 7 section 2).
+    await tx.$executeRaw`DELETE FROM "RunBaselinePin" p USING "Run" r WHERE p."runId" = r.id AND r.status NOT IN ('queued', 'running')`;
     return rows;
   });
   for (const groupRunId of new Set(reaped.flatMap((r) => (r.groupRunId ? [r.groupRunId] : [])))) await settleGroup(db, groupRunId);

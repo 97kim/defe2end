@@ -15,6 +15,7 @@ export function artifactKey(meta: ArtifactMeta): string {
   switch (meta.kind) {
     case "screenshot":
     case "dom_summary":
+    case "visual_diff":
     case "a11y_snapshot":
       return `step-${meta.stepIndex ?? 0}`;
     case "video": {

@@ -269,5 +269,38 @@
       "runs": "실행",
       "lastFailed": "마지막 실패"
     }
+  },
+  "visual": {
+    "verdict": {
+      "created": "첫 기준",
+      "match": "기준과 같음",
+      "shifted": "미세 이동",
+      "changed": "변경",
+      "size_mismatch": "크기 다름",
+      "skipped": "건너뜀",
+      "incomparable": "비교 불가"
+    },
+    "createdNote": "첫 기준으로 저장됐어요.",
+    "skippedNote": "기준을 읽지 못했거나 비교 중에 문제가 생겨 이 스크린샷은 비교하지 않았어요.",
+    "incomparableNote": "기준과 다른 조건({conditions})에서 찍혀서 비교하지 않았어요.",
+    "conditions": {
+      "browserVersion": "브라우저 버전",
+      "deviceScaleFactor": "기기 배율",
+      "viewport": "뷰포트",
+      "fontSet": "글꼴",
+      "maskingPolicyVersion": "가림 규칙"
+    },
+    "difference": "차이 {diff}",
+    "shiftDifference": "{x},{y}px 이동 보정 뒤 {diff}",
+    "baselineVersion": "기준 v{version}",
+    "olderBaseline": "v{version}으로 판정했어요. 지금 기준은 v{current}예요.",
+    "baseline": "기준",
+    "current": "현재",
+    "diff": "차이",
+    "approve": "새 기준으로 승인",
+    "approving": "승인하는 중…",
+    "approved": "기준 v{version}으로 승인했어요.",
+    "approveConflict": "그 사이에 기준이 바뀌었어요. 페이지를 새로 고친 뒤 다시 승인하세요.",
+    "approveFailed": "승인하지 못했어요: {message}"
   }
 }

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { can, DEFAULT_DEVICE, DESKTOP_TIMINGS, MASKING_POLICY_VERSION, missingCapabilities, RUN_LIMITS, splitSelectorList, runSnapshotSchema, screenQualityCapabilities, stepsSchema, uploadAttachmentRefs, type RunSnapshot, type RunTrigger, type Step } from "@defe2end/shared";
 import type { Prisma } from "./generated/prisma/client.js";
 import { lockWorkspaceRuns } from "./runs.js";
+import { pinVisualBaselines } from "./visual-baselines.js";
 import { missingPersonalVariables, subjectAuthSession, type ValueSubject } from "./variables.js";
 
 type Tx = Prisma.TransactionClient;
@@ -140,6 +141,8 @@ export async function createRunsInTx(tx: Tx, input: CreateRunsInput, env: RunCre
     const runIds: string[] = [];
     for (const [index, spec] of runs.entries()) {
       const first = index === 0;
+      // Stage 7 section 4: the baselines this run judges against, fixed now.
+      const pinned = await pinVisualBaselines(tx, { scenarioId: spec.scenarioId, environmentId, location: placement.location, snapshot: spec.snapshot });
       const run = await tx.run.create({
         data: {
           workspaceId,
@@ -156,11 +159,12 @@ export async function createRunsInTx(tx: Tx, input: CreateRunsInput, env: RunCre
           requestHash: first ? requestHash : undefined,
           location: placement.location,
           desktopDeviceId,
-          snapshot: spec.snapshot,
+          snapshot: pinned.snapshot,
           options: input.options,
         },
         select: { id: true },
       });
+      if (pinned.versionIds.length > 0) await tx.runBaselinePin.createMany({ data: [...new Set(pinned.versionIds)].map((versionId) => ({ runId: run.id, versionId })) });
       runIds.push(run.id);
     }
     return { runIds, groupRunId: group?.id ?? null, created: true };

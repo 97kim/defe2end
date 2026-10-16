@@ -3,7 +3,7 @@
 // the contract.
 import { z } from "zod";
 import { NO_STOP, RUN_ERROR_CODES, RUN_TERMINAL_STATUSES, STEP_RESULT_STATUSES, type StopCause } from "./run-status.js";
-import { maskingSettingsSchema, renderConditionsSchema, VISUAL_VERDICTS } from "./screen-quality.js";
+import { maskingSettingsSchema, renderConditionsSchema, VISUAL_RUNTIMES, VISUAL_VERDICTS } from "./screen-quality.js";
 import { stepSchema, STEP_FORMAT_VERSION } from "./steps.js";
 
 /** Resource limits (contract section 3). Defaults are estimates until measured; deployments override them by env. */
@@ -83,6 +83,15 @@ export type Device = z.infer<typeof deviceSchema>;
 
 export const DEFAULT_DEVICE: Device = { viewport: { width: 1280, height: 720 } };
 
+/** Device part of the visual baseline key: the viewport, plus a short hash of a custom user agent. */
+export function visualDeviceKey(device: Device): string {
+  const size = `${device.viewport.width}x${device.viewport.height}`;
+  if (!device.userAgent) return size;
+  let h = 0;
+  for (const ch of device.userAgent) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
+  return `${size}-ua${(h >>> 0).toString(16)}`;
+}
+
 /**
  * A target-site login session in Playwright's storage state format (stage 4 contract section 5). It is a
  * credential: like the plan that carries it, never stored, logged or put in an event.
@@ -123,6 +132,17 @@ export const runSnapshotSchema = z.strictObject({
   variableKeys: z.array(z.string()),
   /** Workspace attachments the uploadFile steps refer to (`attachment:<name>`), pinned to the version current at request time. */
   attachments: z.array(z.strictObject({ name: z.string(), id: z.string(), version: z.number().int().positive() })).default([]),
+  /**
+   * Stage 7 section 4: baselines pinned for the run's screenshot steps, per runtime the run may use (a desktop
+   * run pins both desktop runtimes; the app judges with its own). `versionId: null` = no baseline existed, so
+   * that step may report `created`.
+   */
+  visual: z
+    .strictObject({
+      device: z.string(),
+      baselines: z.array(z.strictObject({ stepId: z.string(), runtime: z.enum(VISUAL_RUNTIMES), versionId: z.string().nullable() })),
+    })
+    .optional(),
   /** Stage 7 section 5: the site's selectors and the scenario switch at request time. Absent (older runs) = on, no selectors. */
   masking: maskingSettingsSchema.optional(),
 });

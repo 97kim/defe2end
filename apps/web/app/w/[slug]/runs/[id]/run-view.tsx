@@ -37,6 +37,7 @@ import {
 } from "../run-ui";
 import { useHydrated } from "../use-hydrated";
 import { DiagnosisPanel } from "./diagnosis-panel";
+import { VisualApproveContext, VisualBadge, VisualDetail } from "./visual-result";
 import { PopIn, SwapIn } from "../../../../transitions/motion";
 
 type T = ReturnType<typeof useTranslations<"runs">>;
@@ -44,6 +45,8 @@ type T = ReturnType<typeof useTranslations<"runs">>;
 export interface RunPermissions {
   cancel: boolean;
   create: boolean;
+  /** `scenario.write`: approve a screenshot as the new visual baseline. */
+  approveBaseline?: boolean;
 }
 
 const PROBLEM = new Set(["failed", "error", "timed_out", "cancelled"]);
@@ -143,7 +146,9 @@ export function RunView({
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex min-w-0 flex-col gap-3">
           {run.attemptCount > 1 && <AttemptSwitcher count={run.attemptCount} shown={shown} onPick={setAttempt} t={t} />}
-          <Steps run={view} runningIndex={earlier ? -1 : runningIndex} t={t} />
+          <VisualApproveContext.Provider value={{ slug, runId: run.id, canApprove: can.approveBaseline === true }}>
+            <Steps run={view} runningIndex={earlier ? -1 : runningIndex} t={t} />
+          </VisualApproveContext.Provider>
         </div>
         <aside className="flex flex-col gap-6" aria-label={t("side.label")}>
           {changes && <Changes slug={slug} run={run} view={changes} />}
@@ -490,7 +495,7 @@ function Steps({ run, runningIndex, t }: { run: RunDetail; runningIndex: number;
       {run.steps.length === 0 && <p className="px-6 py-8 text-center text-text-muted">{t("steps.none")}</p>}
       <ol>
         {run.steps.map((step) => (
-          <StepRow key={step.index} run={run} step={step} status={stepStatus(step, run, runningIndex)} shots={run.artifacts.filter((a) => a.kind === "screenshot" && a.stepIndex === step.index)} />
+          <StepRow key={step.index} run={run} step={step} status={stepStatus(step, run, runningIndex)} shots={run.artifacts.filter((a) => a.kind === "screenshot" && a.stepIndex === step.index)} diff={run.artifacts.find((a) => a.kind === "visual_diff" && a.stepIndex === step.index)} />
         ))}
       </ol>
       {(logs.length > 0 || traces.length > 0) && (
@@ -514,7 +519,7 @@ function Steps({ run, runningIndex, t }: { run: RunDetail; runningIndex: number;
   );
 }
 
-function StepRow({ run, step, status, shots }: { run: RunDetail; step: RunStepView; status: StepDisplayStatus; shots: ArtifactView[] }) {
+function StepRow({ run, step, status, shots, diff }: { run: RunDetail; step: RunStepView; status: StepDisplayStatus; shots: ArtifactView[]; diff?: ArtifactView }) {
   const t = useTranslations("runs");
   const actionLabel = useActionLabel();
   const detailId = useId();
@@ -522,7 +527,8 @@ function StepRow({ run, step, status, shots }: { run: RunDetail; step: RunStepVi
   // Warnings and optional-step skips carry a message worth showing.
   const noted = (status === "warning" || status === "skipped") && Boolean(step.result?.errorMessage);
   const optionalSkip = status === "skipped" && Boolean(step.result?.errorMessage?.startsWith("[optional]"));
-  const hasDetail = problem || noted || shots.length > 0 || Boolean(step.result?.possibleDuplicate);
+  const visual = step.result?.visual ?? null;
+  const hasDetail = problem || noted || shots.length > 0 || Boolean(step.result?.possibleDuplicate) || visual !== null;
   const [open, setOpen] = useState(problem || status === "warning");
   useEffect(() => {
     if (problem) setOpen(true);
@@ -558,6 +564,7 @@ function StepRow({ run, step, status, shots }: { run: RunDetail; step: RunStepVi
       {(status === "failed" || status === "error" || status === "cancelled" || status === "timed_out") && <StatusBadge status={status} label={t(`stepStatus.${status}`)} />}
       {status === "warning" && <StatusBadge status="warning" label={t("stepStatus.warning")} />}
       {optionalSkip && <StatusBadge status="skipped" label={t("stepStatus.skippedOptional")} />}
+      {visual && <VisualBadge visual={visual} />}
       <span className="min-w-0 flex-1 truncate text-left font-mono text-code text-text-secondary">{[step.selector ?? step.url, step.value ?? step.expected].filter((v) => v !== undefined && v !== "").join(" → ")}</span>
       {r && r.attempts > 1 && (
         <span className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-current/30 px-2 text-meta font-semibold">
@@ -613,6 +620,7 @@ function StepRow({ run, step, status, shots }: { run: RunDetail; step: RunStepVi
                 </span>
               </p>
             )}
+            {visual && <VisualDetail visual={visual} shot={shots.at(-1)} diff={diff} />}
             {infra && <InfraHelp run={run} step={step} />}
           </div>
           {shots.length > 0 && (
