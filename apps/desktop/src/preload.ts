@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld("defe2end", {
     logout: () => ipcRenderer.invoke("connection:logout"),
     setAlias: (alias: string) => ipcRenderer.invoke("connection:setAlias", alias),
   },
+  update: {
+    state: () => ipcRenderer.invoke("update:state"),
+    onAvailable: (listener: (update: unknown) => void) => subscribe("app:update", listener),
+    open: () => ipcRenderer.invoke("update:open"),
+    getEnabled: () => ipcRenderer.invoke("update:getEnabled"),
+    setEnabled: (value: boolean) => ipcRenderer.invoke("update:setEnabled", value),
+  },
   runs: {
     onProgress: (listener: (progress: unknown) => void) => subscribe("runs:progress", listener),
   },

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ChatPanel } from "../../../components/ai/chat-panel";
+import { UpdateNotice } from "../../../components/desktop/update-notice";
 import { NavigationGuardHost } from "../../../components/navigation-guard";
 import { Sidebar } from "../../../components/sidebar";
 import { listMyWorkspaces, requireWorkspace } from "../../../lib/page";
@@ -19,6 +20,7 @@ export default async function WorkspaceLayout({ children, params }: { children: 
       <SideBrowserPanel />
       <ChatPanel />
       <NavigationGuardHost />
+      <UpdateNotice />
     </div>
   );
 }

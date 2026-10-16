@@ -210,7 +210,12 @@
     "findPrevious": "이전",
     "findNext": "다음",
     "findClose": "닫기",
-    "findNoMatches": "결과 없음"
+    "findNoMatches": "결과 없음",
+    "updateCheck": "새 버전 알림 받기",
+    "updateCheckHint": "하루에 한 번 공개 릴리스 페이지에서 새 버전을 확인해요. 사용자나 서버에 대한 정보는 보내지 않아요.",
+    "updateAvailable": "defE2End 새 버전({version})을 받을 수 있어요.",
+    "updateDownload": "다운로드 페이지 열기",
+    "updateTurnOff": "확인하지 않기"
   },
   "notifications": {
     "viewOnly": "Slack 알림은 관리자만 바꿀 수 있어요.",

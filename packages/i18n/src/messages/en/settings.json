@@ -210,7 +210,12 @@
     "findPrevious": "Previous",
     "findNext": "Next",
     "findClose": "Close",
-    "findNoMatches": "No results"
+    "findNoMatches": "No results",
+    "updateCheck": "Tell me about new versions",
+    "updateCheckHint": "Checks the public releases page once a day for a newer version. Sends nothing about you or your server.",
+    "updateAvailable": "defE2End {version} is available.",
+    "updateDownload": "Open the download page",
+    "updateTurnOff": "Don't check"
   },
   "notifications": {
     "viewOnly": "Only admins can change Slack notifications.",
