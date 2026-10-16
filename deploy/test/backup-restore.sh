@@ -48,6 +48,9 @@ const ws = await db.workspace.create({ data: { name: "backup", slug: "backup" } 
 await db.membership.create({ data: { userId: admin.id, workspaceId: ws.id, role: "ADMIN" } });
 const site = await db.site.create({ data: { workspaceId: ws.id, name: "web" } });
 const env = await db.environment.create({ data: { workspaceId: ws.id, siteId: site.id, name: "compose", baseUrl: "http://web:3000" } });
+const k = parseEncryptionKey(process.env.DEFE2END_ENCRYPTION_KEY);
+await db.slackWebhook.create({ data: { workspaceId: ws.id, name: "alerts", urlEncrypted: encryptSecret("https://hooks.example.test/x", k), urlHint: "/x" } });
+await db.authSession.create({ data: { workspaceId: ws.id, environmentId: env.id, userId: admin.id, encryptedState: encryptSecret("{}", k), cookieCount: 0, sizeBytes: 2, savedAt: new Date(), expiresAt: new Date(Date.now() + 86_400_000) } });
 const secret = `s3cret-${Date.now()}`;
 await db.variable.create({ data: { workspaceId: ws.id, environmentId: env.id, key: "PASSWORD", isSecret: true, valueEncrypted: encryptSecret(secret, parseEncryptionKey(process.env.DEFE2END_ENCRYPTION_KEY)) } });
 const steps = [{ id: "s1", action: "goto", url: "/login" }, { id: "s2", action: "screenshot", name: "login" }];
@@ -92,6 +95,21 @@ mkdir -p "$WORK/other" && cp -R "$BACKUP/." "$WORK/other/"
 sed 's/"appVersion": "[^"]*"/"appVersion": "0.0.0-other"/' "$BACKUP/manifest.json" > "$WORK/other/manifest.json"
 if compose run --rm --no-deps -T -v "$WORK/other:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "Restore with the image of version 0.0.0-other first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
+
+echo "== a link in the storage volume counts as not empty (nothing is written through it)"
+compose run --rm --no-deps -T --entrypoint sh migrate -c 'ln -s /tmp /data/storage/workspaces'
+if compose run --rm --no-deps -T -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+grep -q "is not empty" "$WORK/out" || { cat "$WORK/out"; exit 1; }
+compose run --rm --no-deps -T --entrypoint sh migrate -c 'rm /data/storage/workspaces'
+
+echo "== a database restore that fails half way is rolled back"
+# A type with the dump's name: no tables, so the empty check passes, but the dump's CREATE TYPE fails.
+compose exec -T postgres psql -U defe2end -d defe2end -q -c "CREATE TYPE public.\"Role\" AS ENUM ('x')"
+if compose run --rm --no-deps -T -v "$BACKUP:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+grep -q "was rolled back" "$WORK/out" || { cat "$WORK/out"; exit 1; }
+tables="$(compose exec -T postgres psql -U defe2end -d defe2end -At -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+[ "$tables" = "0" ] || { echo "a failed restore left $tables tables" >&2; exit 1; }
+compose exec -T postgres psql -U defe2end -d defe2end -q -c 'DROP TYPE public."Role"'
 
 echo "== restore into the empty stack"
 compose run --rm --no-deps -T -v "$BACKUP:/backup:ro" migrate restore /backup
@@ -148,6 +166,8 @@ grep -q "not the key this backup was made with" "$WORK/out" || { cat "$WORK/out"
 compose run --rm --no-deps -T -e DEFE2END_ENCRYPTION_KEY="$OTHER_KEY" -v "$BACKUP:/backup:ro" migrate restore --without-key /backup
 nulls="$(compose exec -T postgres psql -U defe2end -d defe2end -At -c 'SELECT count(*) FROM "Variable" WHERE "isSecret" AND "valueEncrypted" IS NULL')"
 [ "$nulls" = "1" ] || { echo "the secret was not dropped ($nulls)" >&2; exit 1; }
+left="$(compose exec -T postgres psql -U defe2end -d defe2end -At -c 'SELECT (SELECT count(*) FROM "AuthSession") + (SELECT count(*) FROM "SlackWebhook" WHERE "invalidAt" IS NULL)')"
+[ "$left" = "0" ] || { echo "site login sessions or valid webhooks remain after --without-key ($left)" >&2; exit 1; }
 
 echo "== a restore left half done keeps web from starting"
 compose exec -T postgres psql -U defe2end -d defe2end -c 'UPDATE "InstanceSetting" SET "restoreInProgressAt" = now()'

@@ -35,4 +35,5 @@ COPY --from=build --chown=node:node /out ./
 # `backup <dir>` and `restore <dir>`: docker compose run --rm migrate backup /backup
 ENV PATH=/app/ops/bin:$PATH
 USER node
-CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
+# Applies migrations, then records the server version that migrated the database (web and worker check it).
+CMD ["node", "ops/cli.mjs", "migrate"]

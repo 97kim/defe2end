@@ -8,8 +8,9 @@
 // and `manifest.json`. The encryption key and other secrets are never written: keep the key separately.
 import { spawn } from "node:child_process";
 import { createDecipheriv, createHash, createHmac } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import { access, constants, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
+import { access, constants, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -139,20 +140,51 @@ async function databaseMigrations() {
 
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Stored files, relative keys with `/`, skipping the in-progress uploads under `.tmp`. */
-async function listFiles(root) {
-  const out = [];
+// Same rule as the server's storage keys: server-made ids only, so no `..`, no absolute paths.
+const KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*(\.[a-z0-9]{1,8})?$/;
+
+function checkKey(key) {
+  if (typeof key !== "string" || !KEY_PATTERN.test(key) || key.startsWith(`${TEMP_DIR}/`)) fail(`Invalid file key ${JSON.stringify(key)}.`);
+  return key;
+}
+
+/**
+ * Every entry under `root` (never following links): `files` are regular files with valid keys, `other` is
+ * everything else (links, odd names, devices), skipping the in-progress uploads under `.tmp`.
+ */
+async function listEntries(root) {
+  const files = [];
+  const other = [];
   async function walk(dir) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
-      if (dir === root && (entry.name === TEMP_DIR || entry.name === "lost+found")) continue;
+      const rel = relative(root, path).split(sep).join("/");
+      if (dir === root && (entry.name === TEMP_DIR || entry.name === "lost+found") && entry.isDirectory()) continue;
       if (entry.isDirectory()) await walk(path);
-      else if (entry.isFile()) out.push(relative(root, path).split(sep).join("/"));
+      else if (entry.isFile() && KEY_PATTERN.test(rel)) files.push(rel);
+      else other.push(rel);
     }
   }
   await walk(root);
-  return out.sort();
+  return { files: files.sort(), other: other.sort() };
 }
+
+/** `root/key` after checking each component below `root` is a real directory or absent, never a link. */
+async function safePath(root, key) {
+  const realRoot = await realpath(root);
+  let path = realRoot;
+  const parts = checkKey(key).split("/");
+  for (const [i, part] of parts.entries()) {
+    path = join(path, part);
+    const info = await lstat(path).catch((err) => (err.code === "ENOENT" ? null : Promise.reject(err)));
+    if (!info) continue;
+    if (info.isSymbolicLink()) fail(`${relative(realRoot, path)} is a symbolic link; refusing to follow it.`);
+    if (i < parts.length - 1 && !info.isDirectory()) fail(`${relative(realRoot, path)} is not a directory.`);
+  }
+  return path;
+}
+
+const NOFOLLOW = fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW;
 
 /** Copies `from` to `to` (through a temp file when `temp` is given), returning size and SHA-256. */
 async function copyHashed(from, to, temp) {
@@ -167,7 +199,7 @@ async function copyHashed(from, to, temp) {
   });
   await mkdir(dirname(to), { recursive: true });
   const target = temp ?? to;
-  await pipeline(createReadStream(from), tap, createWriteStream(target, { flags: "wx", mode: 0o640 }));
+  await pipeline(createReadStream(from, { flags: NOFOLLOW }), tap, createWriteStream(target, { flags: "wx", mode: 0o640 }));
   if (temp) await rename(temp, to);
   return { size, sha256: hash.digest("hex") };
 }
@@ -175,7 +207,7 @@ async function copyHashed(from, to, temp) {
 async function hashFile(path) {
   const hash = createHash("sha256");
   let size = 0;
-  for await (const chunk of createReadStream(path)) {
+  for await (const chunk of createReadStream(path, { flags: NOFOLLOW })) {
     hash.update(chunk);
     size += chunk.length;
   }
@@ -252,9 +284,12 @@ async function backup(dir) {
   console.log("Copying the file storage...");
   const files = [];
   let skipped = 0;
-  for (const key of await listFiles(root)) {
+  const listed = await listEntries(root);
+  if (listed.other.length) console.warn(`Skipped ${listed.other.length} entries that are not stored files (links or odd names): ${listed.other.slice(0, 5).join(", ")}`);
+  await mkdir(join(target, "files"));
+  for (const key of listed.files) {
     try {
-      files.push({ key, ...(await copyHashed(join(root, key), join(target, "files", key))) });
+      files.push({ key, ...(await copyHashed(await safePath(root, key), await safePath(join(target, "files"), key))) });
     } catch (err) {
       if (err.code !== "ENOENT") throw err;
       skipped++;
@@ -334,17 +369,21 @@ async function restore(dir, { withoutKey }) {
         "(`docker compose up -d postgres`), without running migrate or the web server first.",
     );
   }
-  const existing = await listFiles(root).catch((err) => (err.code === "ENOENT" ? [] : Promise.reject(err)));
-  if (existing.length > 0) fail(`The file storage ${root} already has ${existing.length} files. Restore needs an empty storage volume.`);
   await ensureWritable(root);
+  const existing = await listEntries(root);
+  const found = [...existing.files, ...existing.other];
+  const tmpInfo = await lstat(join(root, TEMP_DIR)).catch(() => null);
+  if (tmpInfo && (!tmpInfo.isDirectory() || (await readdir(join(root, TEMP_DIR))).length > 0)) found.push(TEMP_DIR);
+  if (found.length > 0) {
+    fail(`The file storage ${root} is not empty (${found.length} entries, e.g. ${found.slice(0, 3).join(", ")}). Restore needs an empty storage volume.`);
+  }
 
   // Check everything before touching the database.
   console.log("Checking the backup...");
   const dump = await hashFile(join(source, "db.dump"));
   if (dump.sha256 !== manifest.database.sha256) fail("db.dump does not match its checksum in manifest.json; the backup is damaged.");
   for (const f of manifest.files.entries) {
-    if (f.key.split("/").some((part) => part === ".." || part === "") || f.key.startsWith(`${TEMP_DIR}/`)) fail(`Invalid file key ${f.key}.`);
-    const got = await hashFile(join(source, "files", f.key)).catch(() => null);
+    const got = await hashFile(await safePath(join(source, "files"), f.key)).catch((err) => (err instanceof UserError ? Promise.reject(err) : null));
     if (!got || got.sha256 !== f.sha256) fail(`files/${f.key} is missing or does not match its checksum; the backup is damaged.`);
   }
 
@@ -356,9 +395,11 @@ async function restore(dir, { withoutKey }) {
   const tempDir = join(root, TEMP_DIR);
   await mkdir(tempDir, { recursive: true });
   for (const f of manifest.files.entries) {
-    const got = await copyHashed(join(source, "files", f.key), join(root, f.key), join(tempDir, `restore-${f.sha256}`));
+    const to = await safePath(root, f.key);
+    const got = await copyHashed(await safePath(join(source, "files"), f.key), to, join(tempDir, `restore-${f.sha256}`));
+    if ((await realpath(dirname(to))) !== dirname(to)) fail(`${f.key} left the storage root while it was restored.`);
     if (got.sha256 !== f.sha256) {
-      await rm(join(root, f.key), { force: true });
+      await rm(to, { force: true });
       fail(`files/${f.key} changed while it was restored.`);
     }
   }
@@ -378,7 +419,7 @@ async function restore(dir, { withoutKey }) {
       "error(restore_interrupted), pending notifications as dead. Check the instance, then resume:",
       "  docker compose run --rm --no-deps migrate resume-automation",
       withoutKey
-        ? "Restored without the original key: secret values and login sessions were dropped. Enter the secrets again; notification webhook URLs can't be read and must be set again."
+        ? "Restored without the original key: secret values, login sessions and saved site login sessions were dropped, and notification webhooks are marked invalid. Enter the secrets and webhook URLs again, and capture site logins again."
         : "Start web and worker with the same DEFE2END_ENCRYPTION_KEY.",
     ].join("\n"),
   );
@@ -400,29 +441,44 @@ function isolationSql(withoutKey) {
     for (const table of ["Variable", "PersonalVariableValue", "ScheduleVariableValue", "BotVariableValue"]) {
       lines.push(`UPDATE public."${table}" SET "valueEncrypted" = NULL WHERE "valueEncrypted" IS NOT NULL;`);
     }
-    lines.push(`DELETE FROM public.session;`, `UPDATE public."InstanceSetting" SET "encryptionKeyCheck" = NULL WHERE id = 1;`);
+    lines.push(
+      // Service login sessions and saved target-site login sessions: both need to be made again.
+      `DELETE FROM public.session;`,
+      `DELETE FROM public."AuthSession";`,
+      // Shown as invalid: the URL must be entered again.
+      `UPDATE public."SlackWebhook" SET "invalidAt" = now();`,
+      `UPDATE public."InstanceSetting" SET "encryptionKeyCheck" = NULL WHERE id = 1;`,
+    );
   }
   return `${lines.join("\n")}\n`;
 }
 
-/** pg_restore writes SQL, psql runs it plus `extra` in one transaction that stops at the first error. */
-function restoreDatabase(dumpFile, extra) {
-  return new Promise((done, reject) => {
-    const psql = spawn("psql", ["-X", "-q", "-1", "-v", "ON_ERROR_STOP=1", "-d", libpqUrl(), "-f", "-"], { stdio: ["pipe", "ignore", "inherit"] });
-    const dump = spawn("pg_restore", ["--no-owner", "--no-acl", "-f", "-", dumpFile], { stdio: ["ignore", "pipe", "inherit"] });
-    dump.stdout.pipe(psql.stdin, { end: false });
-    dump.on("error", reject);
-    psql.on("error", reject);
-    dump.on("close", (code) => {
-      if (code !== 0) {
-        psql.stdin.destroy();
-        reject(new UserError(`pg_restore failed (exit ${code})`));
-        return;
-      }
-      psql.stdin.end(extra);
+/**
+ * pg_restore writes the whole SQL script to a file first (nothing reaches the database if that fails); psql then
+ * runs it plus `extra` as one transaction (-1) that stops and rolls back at the first error.
+ */
+async function restoreDatabase(dumpFile, extra) {
+  const script = join(tmpdir(), `defe2end-restore-${process.pid}.sql`);
+  try {
+    await run("pg_restore", ["--no-owner", "--no-acl", "--file", script, dumpFile]);
+    await writeFile(script, extra, { flag: "a" });
+    await run("psql", ["-X", "-q", "-1", "-v", "ON_ERROR_STOP=1", "-d", libpqUrl(), "-f", script], { capture: true }).catch((err) => {
+      throw new UserError(`restoring the database failed and was rolled back; the database is still empty. ${err.message}`);
     });
-    psql.on("close", (code) => (code === 0 ? done() : reject(new UserError(`restoring the database failed (psql exit ${code}); nothing was committed`))));
-  });
+  } finally {
+    await rm(script, { force: true });
+  }
+}
+
+/** The image's default command: apply migrations, then record which server version migrated this database. */
+async function migrate() {
+  await run(join(APP_DIR, "node_modules", ".bin", "prisma"), ["migrate", "deploy"]);
+  const version = await appVersion();
+  if (!/^[0-9A-Za-z.+-]+$/.test(version)) fail(`Unexpected version ${version}.`);
+  await sql(
+    `INSERT INTO "InstanceSetting" (id, "migratedByVersion") VALUES (1, '${version}') ON CONFLICT (id) DO UPDATE SET "migratedByVersion" = EXCLUDED."migratedByVersion"`,
+  );
+  console.log(`Database migrated by server version ${version}.`);
 }
 
 async function resumeAutomation() {
@@ -446,6 +502,7 @@ async function main() {
     return;
   }
   if (command === "resume-automation" && !dir) return resumeAutomation();
+  if (command === "migrate" && !dir) return migrate();
   if (!["backup", "restore"].includes(command) || !dir || rest.length > 0 || (withoutKey && command !== "restore")) {
     console.error(USAGE);
     process.exitCode = 2;
