@@ -67,6 +67,11 @@ export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
 
 /** Upper bound of one `dom_summary` artifact (stage 6 contract section 8). */
 export const DOM_SUMMARY_MAX_BYTES = 8 * 1024;
+/**
+ * Upper bound of one step's browser log (`log` artifact with a step index). The runner keeps at most 50 lines of
+ * 500 characters per step, which stays under this in UTF-8.
+ */
+export const STEP_LOG_MAX_BYTES = 96 * 1024;
 
 export const deviceSchema = z.strictObject({
   viewport: z.strictObject({ width: z.number().int().min(200).max(4000), height: z.number().int().min(200).max(4000) }),
