@@ -44,9 +44,15 @@ test("collects texts verbatim, once per distinct text, and lists source offers",
   assert.match(r.text, /bundled 3 {2}\[BSD-3-Clause\]\n {4}https:\/\/example\.org\/bundled \(version 3\)/);
   assert.doesNotMatch(r.text, /on request|three years/);
   assert.deepEqual(r.missing.map((c) => c.name), ["c"]);
-  const excepted = buildNotices({ sbom, root, extras, exceptions: [{ name: "c", version: "1.", reason: "reviewed: license in the package README only" }] });
+  const exception = { name: "c", version: "1.0.0", license: "ISC", holder: "C Author", reason: "no text anywhere, checked upstream" };
+  const excepted = buildNotices({ sbom, root, extras, exceptions: [exception] });
   assert.deepEqual(excepted.missing, []);
-  assert.equal(buildNotices({ sbom, root, extras, exceptions: [{ name: "c", reason: "" }] }).missing.length, 1);
+  // The standard text with the holder is in the notices: nothing is left out.
+  assert.match(excepted.text, /c 1\.0\.0: the package carries no license text; its declared ISC license, standard text:\n\nISC License[\s\S]*Copyright C Author/);
+  // Only the exact version matches, and every field is required.
+  for (const other of [{ ...exception, version: "1.0" }, { ...exception, version: "1.0.01" }, { ...exception, reason: "" }, { ...exception, holder: "" }]) {
+    assert.equal(buildNotices({ sbom, root, extras, exceptions: [other] }).missing.length, 1);
+  }
   const merged = mergedSbom(sbom, r.components);
   assert.equal(merged.components.length, 6);
   assert.ok(merged.components.every((c) => !("_licensePath" in c)));

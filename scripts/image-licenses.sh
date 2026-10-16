@@ -40,7 +40,7 @@ if [ "$NAME" = web ]; then
   TEXTS="$WORK/texts"
 fi
 
-EXTRA=""; EXTRA2=""; EXTRA3=""; EXTRA4=""
+EXTRA=""; EXTRA2=""; EXTRA3=""; EXTRA4=""; NOTE=""; NOTE2=""
 if [ "$NAME" = worker ]; then
   # Playwright's Chromium headless shell is a plain directory, not a package the scanner reports.
   shell="$(ls -d "$WORK"/root/ms-playwright/chromium_headless_shell-* | head -n 1)"
@@ -49,6 +49,8 @@ if [ "$NAME" = worker ]; then
   bj="$(find "$WORK/root/app/node_modules" -path '*/playwright-core/browsers.json' | head -n 1)"
   cver="$(node -e 'const b=require(process.argv[1]).browsers.find((x)=>x.name==="chromium-headless-shell"&&x.revision===process.argv[2]);process.stdout.write(b?.browserVersion??"")' "$bj" "$rev")"
   [ -n "$cver" ] || { echo "no Chromium version for headless shell r$rev in $bj" >&2; exit 1; }
+  pwv="$(node -p 'require(process.argv[1]).version' "$(dirname "$bj")/package.json")"
+  NOTE="chromium-headless-shell@$cver=$(sh scripts/playwright-build-note.sh chromium-headless-shell "$rev" "$pwv")"
   lic="$(find "$shell" -maxdepth 2 -iname 'LICENSE*' | head -n 1)"
   [ -n "$lic" ] || { echo "no license file in $shell" >&2; exit 1; }
   EXTRA="chromium-headless-shell@$cver=BSD-3-Clause=$lic=https://chromium.googlesource.com/chromium/src/+/refs/tags/$cver"
@@ -61,11 +63,12 @@ if [ "$NAME" = worker ]; then
     libs="$(sh scripts/ffmpeg-libs.sh "$(ls "$ff"/ffmpeg-* | head -n 1)")"
     EXTRA3="$(echo "$libs" | sed -n 1p)"; EXTRA4="$(echo "$libs" | sed -n 2p)"
     EXTRA2="ffmpeg@${tag#n}=LGPL-2.1-or-later=$fflic=https://git.ffmpeg.org/gitweb/ffmpeg.git/tree/refs/tags/$tag"
+    NOTE2="ffmpeg@${tag#n}=$(sh scripts/playwright-build-note.sh ffmpeg "${ff##*-}" "$pwv" "$(ls "$ff"/ffmpeg-* | head -n 1)")"
   fi
 fi
 node scripts/third-party-notices.mjs --sbom "$WORK/sbom.json" --root "$WORK/root" \
   --out "$OUT/licenses/THIRD_PARTY_NOTICES.txt" --sbom-out "$OUT/licenses/sbom.cdx.json" \
-  --title "defE2End $NAME image $VERSION ($PLATFORM)" ${EXTRA:+--extra "$EXTRA"} ${EXTRA2:+--extra "$EXTRA2"} ${EXTRA3:+--extra "$EXTRA3"} ${EXTRA4:+--extra "$EXTRA4"} ${TEXTS:+--texts-root "$TEXTS"}
+  --title "defE2End $NAME image $VERSION ($PLATFORM)" ${EXTRA:+--extra "$EXTRA"} ${EXTRA2:+--extra "$EXTRA2"} ${EXTRA3:+--extra "$EXTRA3"} ${EXTRA4:+--extra "$EXTRA4"} ${NOTE:+--extra-note "$NOTE"} ${NOTE2:+--extra-note "$NOTE2"} ${TEXTS:+--texts-root "$TEXTS"}
 
 # The notices layer on top of the scanned candidate, nothing rebuilt.
 labels=""
