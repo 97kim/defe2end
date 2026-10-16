@@ -346,7 +346,7 @@ export class RunExecutor {
           return this.opts.runPlan({ ...plan, attempt }, {
             headless,
             // Someone at this PC may close the browser window: that is a cancel, not a failure (contract 4.4.1).
-            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...(message.masking ? { masking: message.masking } : {}), ...this.visualOptions(job, signal) });
+            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...(message.masking ? { masking: message.masking } : {}), render: { runtime: detectRuntime({ desktop: true }) }, ...this.visualOptions(job, signal) });
         },
       });
       ({ stopCause, attemptCount, passedAfterRetry } = retried);

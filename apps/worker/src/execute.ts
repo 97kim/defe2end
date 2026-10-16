@@ -135,6 +135,7 @@ async function runAttempt(
   const visual = await visualOptions(deps, claimed);
   const runOptions: RunPlanOptions = {
     ...(visual ? { visual } : {}),
+    render: { runtime: "server" },
     sink,
     signal,
     owner: deps.owner,
