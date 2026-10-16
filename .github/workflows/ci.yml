@@ -125,3 +125,16 @@ jobs:
       # Data -> backup (refused while the app runs) -> empty stack -> restore with the same key -> automation
       # paused until resume -> data, files, secret. Also: another key refused, --without-key, half-done restore.
       - run: sh deploy/test/backup-restore.sh
+
+  upgrade:
+    name: Upgrade from the previous version
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The previous version is built from its commit until a release exists (UPGRADE_FROM_VERSION).
+          fetch-depth: 0
+      # Previous version's API makes data -> this version refuses the old database until migrate -> migrate ->
+      # login, one run, the secret and the old screenshot.
+      - run: sh deploy/test/upgrade.sh
