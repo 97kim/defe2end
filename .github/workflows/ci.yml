@@ -5,12 +5,16 @@ on:
   pull_request:
   # Run by hand to get the desktop installers as artifacts.
   workflow_dispatch:
+  # The release workflow runs the whole suite first.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # Includes the workflow name: called from the release, this run must not cancel (or be cancelled by) the CI
+  # run the same tag push started.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -42,8 +46,8 @@ jobs:
       # its sandbox needs, so tests run it unsandboxed here; the worker image keeps the sandbox on.
       CHROMIUM_SANDBOX: "false"
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .tool-versions
       - run: corepack enable
@@ -52,7 +56,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
-      - run: node --test scripts/stamp-version.test.mjs
+      - run: node --test scripts/stamp-version.test.mjs scripts/third-party-notices.test.mjs
       - run: node scripts/cleanroom-check.mjs --self-test
       - run: node scripts/cleanroom-check.mjs
         env:
@@ -69,15 +73,15 @@ jobs:
         include:
           - os: macos-latest
             package: package:mac
-            # dmg only: with the bundled Chromium, dmg + zip for both architectures went over the storage quota.
+            # dmg only (stage 8 contract section 1).
             artifacts: apps/desktop/release/*.dmg
           - os: windows-latest
             package: package:win
             artifacts: apps/desktop/release/*.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .tool-versions
       - run: corepack enable
@@ -94,7 +98,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       # Installers are ~300MB each; uploading them on every push used up the artifact storage quota, so only a
       # manual run uploads them. Every run still builds them.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'workflow_dispatch'
         with:
           name: desktop-${{ runner.os }}
@@ -107,7 +111,7 @@ jobs:
     name: Docker compose smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Builds the images, checks health, the worker's Chromium sandbox and a real run through the
       # compose stack, then tears everything down (the script makes its own throwaway secrets).
       - run: sh apps/worker/scripts/compose-smoke.sh
