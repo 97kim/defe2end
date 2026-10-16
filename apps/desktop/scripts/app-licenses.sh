@@ -15,11 +15,12 @@ ASAR="$(find "$UNPACKED" -name app.asar | head -n 1)"
 [ -n "$ASAR" ] || { echo "no app.asar under $UNPACKED" >&2; exit 1; }
 npx --yes @electron/asar@4 extract "$ASAR" "$WORK/app"
 (cd "$WORK/app" && find . -type f | LC_ALL=C sort) > "release/$TARGET-files.txt"
-syft scan "dir:$WORK/app" -q -o "cyclonedx-json=$WORK/sbom.json"
+syft scan "dir:$WORK/app" -q --select-catalogers "+javascript-package-cataloger" -o "cyclonedx-json=$WORK/sbom.json"
 
-electron_dir="$(node -p 'require("path").dirname(require.resolve("electron/package.json"))')"
+# Electron's own license and Chromium's notices, as packaged next to the app.
+electron_dir="$(dirname "$(find "$UNPACKED" -name LICENSE.electron.txt | head -n 1)")"
 electron_version="$(node -p 'require("electron/package.json").version')"
-set -- --extra "electron@$electron_version=MIT AND BSD-3-Clause=$electron_dir/dist"
+set -- --extra "electron@$electron_version=MIT AND BSD-3-Clause=$electron_dir"
 for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
   [ -d "$dir" ] || continue
   base="$(basename "$dir")"; name="${base%-*}"; rev="${base##*-}"

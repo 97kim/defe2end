@@ -72,6 +72,9 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
   const missing = [];
   const sourceOffer = [];
   for (const c of components) {
+    // Plain file entries (digests of every file) and the OS record stay in the SBOM; defE2End's own packages
+    // are covered by its own license and NOTICE.
+    if (c.type === "file" || c.type === "operating-system" || c.name?.startsWith("@defe2end/")) continue;
     const ids = licenseIds(c);
     const files = licenseFiles(licenseDir(c, root));
     const refs = files.map((file) => {
