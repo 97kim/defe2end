@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { claimNextRun, finishComparisons, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
+import { claimNextRun, deleteAbandonedComparisonFiles, finishComparisons, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
 import { RUNNER_VERSION, sweepBrowsers } from "@defe2end/runner";
 import { IDEMPOTENCY } from "@defe2end/shared";
 import { decryptSecret, LocalStorage } from "@defe2end/shared/server";
@@ -200,6 +200,8 @@ export async function runMaintenance(db: PrismaClient, storage: LocalStorage, co
     baselineVersions += versionIds.length;
     if (versionIds.length === 0) break;
   }
+  // Rows of comparison jobs that lost their claim go first, so their files count as unregistered below.
+  while ((await deleteAbandonedComparisonFiles(db)) > 0);
   let orphans = 0;
   const cutoff = Date.now() - config.orphanAgeMs;
   let batch: string[] = [];

@@ -16,7 +16,7 @@ import type { Step } from "@defe2end/shared";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
-import { createWorker, type Worker } from "../src/worker.js";
+import { createWorker, runMaintenance, type Worker } from "../src/worker.js";
 import { describeDb, getDb, resetDatabase, testConfig, waitFor } from "./helpers.js";
 
 const ENV = { freeBytes: async () => Number.MAX_SAFE_INTEGER, minFreeBytes: () => 0 };
@@ -191,6 +191,30 @@ describeDb("environment comparison", () => {
     expect(cmp).toMatchObject({ status: "done", screenVerdict: "same", structureVerdict: "same" });
     // The stale claim still can't write after the new job is done.
     expect(await commitComparison(getDb(), dead, { error: "late" })).toBe(false);
+  });
+
+  it("files of a job that lost its claim lose their rows and go with the orphan sweep; committed ones stay", async () => {
+    const config = await testConfig({ orphanAgeMs: 0 });
+    const storage = new LocalStorage(config.storageDir);
+    const s = await seed();
+    const { comparisonId, runIds } = await start(s);
+    const img = png(() => 5);
+    for (const id of runIds) await endChild(storage, id, "passed", { "shot-a": { image: img, snapshot: "- a" }, "shot-b": { image: img, snapshot: "- b" } });
+    // The first job writes the first step's diff, then its claim runs out (a stalled process).
+    const stale = (await claimComparison(getDb(), comparisonId))!;
+    const expire = () => getDb().envComparison.update({ where: { id: comparisonId }, data: { claimExpiresAt: new Date(Date.now() - 1000) } }).then(() => undefined);
+    expect(await runComparisonJob(getDb(), storage, stale, { afterStep: expire })).toBe(false);
+    const staleFiles = await getDb().envComparisonFile.findMany({ where: { claimToken: stale.token } });
+    expect(staleFiles).toHaveLength(1);
+    expect(await finishComparisons(getDb(), storage)).toBe(1);
+    const kept = await getDb().envComparisonFile.findMany({ where: { claimToken: { not: stale.token } } });
+    expect(kept).toHaveLength(2);
+
+    await runMaintenance(getDb(), storage, config);
+    expect(await getDb().envComparisonFile.count({ where: { claimToken: stale.token } })).toBe(0);
+    expect(await storage.stat(staleFiles[0]!.storageKey)).toBeNull();
+    for (const f of kept) expect(await storage.stat(f.storageKey)).not.toBeNull();
+    expect(await getDb().envComparisonFile.count()).toBe(2);
   });
 
   it("compare again and cancel race: a stale claim never writes", async () => {

@@ -479,3 +479,19 @@ export async function cancelComparison(db: Db, workspaceId: string, comparisonId
     return { ok: true as const };
   });
 }
+
+/**
+ * File rows of jobs that lost their claim: not referenced by any stored step result and not held by a live
+ * claim. Removing the row leaves the file to the orphan sweep (files are written before their rows, and a
+ * stored result only points at files of the claim that committed it).
+ */
+export async function deleteAbandonedComparisonFiles(db: Db, batch = 500): Promise<number> {
+  return db.$executeRaw`
+    DELETE FROM "EnvComparisonFile" f WHERE f.id IN (
+      SELECT f2.id FROM "EnvComparisonFile" f2 JOIN "EnvComparison" c ON c.id = f2."comparisonId"
+      WHERE NOT (c.status = 'comparing' AND c."claimToken" = f2."claimToken" AND c."claimExpiresAt" > clock_timestamp())
+        AND NOT EXISTS (
+          SELECT 1 FROM "EnvComparisonStep" s
+          WHERE s."comparisonId" = f2."comparisonId" AND (s."screenDiffKey" = f2."storageKey" OR s."structureDiffKey" = f2."storageKey"))
+      LIMIT ${batch}::int)`;
+}
