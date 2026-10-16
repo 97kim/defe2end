@@ -59,14 +59,27 @@ export function buildDiagnosisPrompt(source: DiagnosisSource): string | null {
 /**
  * The stored artifacts a diagnosis of `attempt` uses: the failed step's `dom_summary` and the `log` artifacts of the
  * failed step, its neighbours and the whole run — all from that attempt only, so a retry never gets an earlier
- * attempt's page or logs.
+ * attempt's page or logs. The runner stores each step's browser log as `step-{n}-console` with its step index.
  */
 export function pickDiagnosisArtifacts(steps: RunStepView[], artifacts: ArtifactView[], attempt: number): { dom: ArtifactView | null; logs: ArtifactView[] } {
   const failed = steps.find((s) => s.result?.status === "failed");
   const ofAttempt = artifacts.filter((a) => a.attempt === attempt);
   const dom = failed ? (ofAttempt.find((a) => a.kind === "dom_summary" && a.stepIndex === failed.index) ?? null) : null;
   const near = (i: number | null) => i === null || (failed !== undefined && Math.abs(i - failed.index) <= 1);
-  return { dom, logs: ofAttempt.filter((a) => a.kind === "log" && near(a.stepIndex)) };
+  // In step order (run-wide logs first), so the last lines kept by the 30-line cap are those of the failure.
+  const logs = ofAttempt.filter((a) => a.kind === "log" && near(a.stepIndex)).sort((a, b) => (a.stepIndex ?? -1) - (b.stepIndex ?? -1));
+  return { dom, logs };
+}
+
+/** The picked `log` artifacts' text as one log, each line of a step's artifact marked with its step number. */
+export function diagnosisLogText(logs: { stepIndex: number | null; text: string | null }[]): string | null {
+  const lines = logs.flatMap(({ stepIndex, text }) =>
+    (text ?? "")
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => (stepIndex === null ? l : `[step ${stepIndex + 1}] ${l}`)),
+  );
+  return lines.length ? lines.join("\n") : null;
 }
 
 /** The app takes thread ids up to 64 characters (`ai:send`); a run id plus a UUID went past that. */

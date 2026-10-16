@@ -158,8 +158,12 @@ describeDb("worker runs", () => {
     expect(run.status).toBe("failed");
     const results = await getDb().stepResult.findMany({ where: { runId }, orderBy: { index: "asc" } });
     expect(results[1]).toMatchObject({ status: "failed", errorCode: "blocked_request" });
-    const log = (await getDb().artifact.findMany({ where: { runId, kind: "log" } }))[0]!;
+    const log = (await getDb().artifact.findFirst({ where: { runId, kind: "log", name: "run.log" } }))!;
     expect(await readFile(join(config.storageDir, log.storageKey), "utf8")).toContain("Blocked request to http://169.254.169.254/latest/meta-data/");
+    // The page's own blocked requests go into that step's browser log.
+    const browserLog = (await getDb().artifact.findFirst({ where: { runId, kind: "log", name: "step-1-console" } }))!;
+    expect(browserLog.stepIndex).toBe(0);
+    expect(await readFile(join(config.storageDir, browserLog.storageKey), "utf8")).toContain("request failed: GET http://169.254.169.254/latest/meta-data/");
   });
 
   it("cancel while running: requested first, then cancelled with the browser gone", async () => {
