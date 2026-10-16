@@ -27,7 +27,11 @@ for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
   if [ "$name" = ffmpeg ]; then
     lic="$(find "$dir" -maxdepth 4 \( -iname 'LICENSE*' -o -iname 'COPYING*' \) | head -n 1)"
     [ -n "$lic" ] || { echo "no license file in $dir" >&2; exit 1; }
-    set -- "$@" --extra "playwright-ffmpeg@r$rev=LGPL-2.1-or-later=$lic=https://git.ffmpeg.org/ffmpeg.git"
+    # The binary names its source tag (nX.Y.Z) in its version string; read it without running the binary.
+    bin="$(find "$dir" -maxdepth 2 -type f -name 'ffmpeg*' | head -n 1)"
+    tag="$(LC_ALL=C grep -a -o -m1 'n[0-9][0-9.]*-playwright-build-[0-9]*' "$bin" | head -n 1 | cut -d- -f1)"
+    [ -n "$tag" ] || { echo "no ffmpeg version in $bin" >&2; exit 1; }
+    set -- "$@" --extra "ffmpeg@${tag#n}=LGPL-2.1-or-later=$lic=https://git.ffmpeg.org/gitweb/ffmpeg.git/tree/refs/tags/$tag"
   else
     # The browser build carries only its ABOUT notice (full credits are built into the browser); the Chromium
     # license of the same version comes from scripts/licenses/chromium@<version>.txt, copied from upstream.

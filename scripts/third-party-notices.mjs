@@ -12,7 +12,7 @@
 //
 //   node scripts/third-party-notices.mjs --sbom sbom.cdx.json --root <scanned dir> --out NOTICES.txt \
 //     [--sbom-out merged.cdx.json] [--extra "name@version=license-id=path=source-url"]... [--title "..."]
-//     [--exceptions scripts/license-exceptions.json]
+//     [--exceptions scripts/license-exceptions.json] [--texts-root <build-stage tree with the full node_modules>]
 // <path> of an --extra is a license file or a directory whose license-like files are taken (one level deep).
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -82,7 +82,25 @@ export function licenseDir(component, root) {
   return undefined;
 }
 
-export function buildNotices({ sbom, root, extras = [], title = "defE2End", exceptions = [] }) {
+/**
+ * The same package directory in another tree laid out by pnpm (`node_modules/.pnpm/<id>/node_modules/<name>`),
+ * e.g. the build stage of an image whose final stage keeps only traced files and drops license texts.
+ */
+export function textsRootDir(component, textsRoot) {
+  const location = property(component, "syft:location:0:path");
+  const i = location?.indexOf("/node_modules/.pnpm/") ?? -1;
+  if (!textsRoot || i < 0) return undefined;
+  return join(textsRoot, location.slice(i + 1).replace(/\/[^/]+$/, ""));
+}
+
+/** Packages vendored inside Next (`next/dist/compiled/*`) carry no version of their own: show Next's. */
+export function displayVersion(component) {
+  if (component.version && component.version !== "UNKNOWN") return component.version;
+  const m = /\/\.pnpm\/next@([0-9][^_/(]*)[^/]*\/node_modules\/next\/dist\/compiled\//.exec(property(component, "syft:location:0:path") ?? "");
+  return m ? `bundled in next ${m[1]}` : component.version;
+}
+
+export function buildNotices({ sbom, root, extras = [], title = "defE2End", exceptions = [], textsRoot }) {
   const os = (sbom.components ?? []).find((c) => c.type === "operating-system");
   const distro = os ? `${os.name} ${os.version ?? ""}`.trim() : undefined;
   const components = [...(sbom.components ?? [])];
@@ -109,7 +127,9 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
     // are covered by its own license and NOTICE.
     if (c.type === "file" || c.type === "operating-system" || c.name?.startsWith("@defe2end/")) continue;
     const ids = licenseIds(c);
+    if (c.type === "library" && c.version === "UNKNOWN") c.version = displayVersion(c);
     let files = licenseFiles(licenseDir(c, root));
+    if (!files.length) files = licenseFiles(textsRootDir(c, textsRoot));
     if (!files.length) files = licenseFiles(join(UPSTREAM_DIR, `${String(c.name).replaceAll("/", "__")}@${c.version}.txt`));
     const refs = files.map((file) => {
       const body = readFileSync(file, "utf8").replace(/\r\n/g, "\n").trim();
@@ -180,7 +200,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const sbom = JSON.parse(readFileSync(a.sbom, "utf8"));
   const exceptionsFile = a.exceptions ?? fileURLToPath(new URL("license-exceptions.json", import.meta.url));
   const exceptions = existsSync(exceptionsFile) ? JSON.parse(readFileSync(exceptionsFile, "utf8")) : [];
-  const result = buildNotices({ sbom, root: a.root, extras, title: a.title, exceptions });
+  const result = buildNotices({ sbom, root: a.root, extras, title: a.title, exceptions, textsRoot: a["texts-root"] });
   writeFileSync(a.out, result.text);
   if (a["sbom-out"]) writeFileSync(a["sbom-out"], `${JSON.stringify(mergedSbom(sbom, result.components), null, 2)}\n`);
   console.log(`${result.components.length} components, ${result.sourceOffer.length} with source to make available`);

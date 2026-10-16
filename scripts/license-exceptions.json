@@ -38,5 +38,15 @@
     "name": "spdx-license-ids",
     "version": "3.0.23",
     "reason": "package.json declares CC0-1.0; no license file in the published package or upstream, checked 2026-10-16: https://github.com/jslicense/spdx-license-ids (tag v3.0.23 and default branch). Listed with its declared license."
+  },
+  {
+    "name": "client-only",
+    "version": "0.0.1",
+    "reason": "package.json declares MIT; the package has only index.js, error.js and package.json and names no repository, checked 2026-10-16: https://registry.npmjs.org/client-only/0.0.1. Listed with its declared license."
+  },
+  {
+    "name": "string-hash",
+    "version": "bundled in next",
+    "reason": "Copy vendored inside next/dist/compiled with only index.js and package.json; package.json declares CC0-1.0 (a public-domain dedication, no notice required), checked 2026-10-16. Listed with its declared license."
   }
 ]
