@@ -17,7 +17,7 @@ export async function scenarioListData(workspace: Workspace): Promise<ScenarioLi
       SELECT id, "scenarioId", status::text AS status, "queuedAt" FROM (
         SELECT id, "scenarioId", status, "queuedAt",
           row_number() OVER (PARTITION BY "scenarioId" ORDER BY "queuedAt" DESC, id DESC) AS n
-        FROM "Run" WHERE "workspaceId" = ${workspace.id} AND "scenarioId" IS NOT NULL) ranked
+        FROM "Run" WHERE "workspaceId" = ${workspace.id} AND "scenarioId" IS NOT NULL AND "comparisonId" IS NULL) ranked
       WHERE n <= ${RECENT_RUNS}::int
       ORDER BY "queuedAt" ASC, id ASC`,
   ]);

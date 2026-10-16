@@ -19,3 +19,4 @@ export * from "./notify-send.js";
 export * from "./notify-message.js";
 export * from "./schedules.js";
 export * from "./run-create.js";
+export * from "./env-comparison.js";

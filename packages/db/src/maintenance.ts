@@ -42,7 +42,7 @@ export async function deleteExpiredTestRuns(db: Db, keepMs: number, batch = 100)
   return db.$transaction(async (tx) => {
     const runs = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Run"
-      WHERE trigger = 'test' AND status NOT IN ('queued', 'running')
+      WHERE trigger = 'test' AND status NOT IN ('queued', 'running') AND "comparisonId" IS NULL
         AND "finishedAt" < clock_timestamp() - ${keepMs}::bigint * interval '1 millisecond'
       ORDER BY "finishedAt" LIMIT ${batch}::int
       FOR UPDATE SKIP LOCKED`;

@@ -1,4 +1,4 @@
-import { finishRun, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
+import { comparisonsOfRuns, finishComparisons, finishRun, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
 import { runPlan, runWithRetries, type RunPlanOptions, type UploadFile } from "@defe2end/runner";
 import { ArtifactLimitError, maskSecrets, storageStateSchema, runOptionsSchema, runSnapshotSchema, RUN_LIMITS, type AbortReason, type ArtifactSink, type ExecutionPlan, type RunVerdict } from "@defe2end/shared";
 import { decryptSecret, type StorageDriver } from "@defe2end/shared/server";
@@ -109,6 +109,12 @@ async function execute(deps: ExecuteDeps, claimed: ClaimedRun, claimSentAt: numb
     log(stored ? `finished: ${verdict.status}` : `lease lost, verdict ${verdict.status} discarded`);
   } catch (err) {
     log(`verdict not stored: ${(err as Error).message}`);
+  }
+  // An environment comparison child: try to finish its comparison now (the reaper's sweep catches misses).
+  try {
+    await finishComparisons(db, deps.storage, await comparisonsOfRuns(db, [runId]));
+  } catch (err) {
+    log(`comparison not finished: ${(err as Error).message}`);
   }
 }
 

@@ -33,6 +33,7 @@ export async function loadDashboard(workspace: { id: string; timezone: string },
       where: {
         workspaceId: workspace.id,
         trigger: { not: "test" },
+        comparisonId: null,
         status: { in: [...RUN_TERMINAL_STATUSES] },
         queuedAt: { gte: range.from, lt: range.to },
         ...envWhere,

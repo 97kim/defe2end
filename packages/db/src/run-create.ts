@@ -80,6 +80,8 @@ export interface CreateRunsInput {
   options: Prisma.InputJsonValue;
   placement: Placement;
   group?: { environmentId: string; mode: "sequential" | "parallel"; continueOnFailure: boolean };
+  /** Environment comparison child: the app also needs `a11y-snapshot-v1` (stage 7 section 7). */
+  comparisonChild?: boolean;
   resolve(tx: Tx): Promise<{ environmentId: string; runs: RunSpec[] }>;
 }
 
@@ -114,7 +116,7 @@ export async function createRunsInTx(tx: Tx, input: CreateRunsInput, env: RunCre
     const { environmentId, runs } = await input.resolve(tx);
     await assertAuthSession(tx, environmentId, subject);
     await assertPersonalVariables(tx, environmentId, subject, runs);
-    const desktopDeviceId = placement.location === "desktop" && requestedById ? await pickDevice(tx, requestedById, placement.deviceId, requiredCapabilities(runs, input.trigger, input.options, environmentId, tx)) : null;
+    const desktopDeviceId = placement.location === "desktop" && requestedById ? await pickDevice(tx, requestedById, placement.deviceId, requiredCapabilities(runs, input.trigger, input.options, environmentId, tx, input.comparisonChild === true)) : null;
 
     const queued = await tx.run.count({ where: { workspaceId, status: "queued" } });
     if (queued + runs.length > RUN_LIMITS.workspaceQueueLength) {
@@ -266,13 +268,14 @@ export function runCapabilities(input: { steps: { action: string }[]; trigger: R
   return [...needed];
 }
 
-async function requiredCapabilities(runs: RunSpec[], trigger: RunTrigger, options: Prisma.InputJsonValue, environmentId: string, tx: Tx): Promise<string[]> {
+async function requiredCapabilities(runs: RunSpec[], trigger: RunTrigger, options: Prisma.InputJsonValue, environmentId: string, tx: Tx, comparisonChild: boolean): Promise<string[]> {
   const environment = await tx.environment.findUnique({ where: { id: environmentId }, select: { useAuthSession: true } });
   return runCapabilities({
     steps: runs.flatMap((r) => r.snapshot.scenario.steps),
     trigger,
     video: (options as { video?: boolean }).video === true,
     useAuthSession: environment?.useAuthSession === true,
+    comparisonChild,
   });
 }
 
