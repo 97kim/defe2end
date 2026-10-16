@@ -75,6 +75,20 @@ describe("RunExecutor", () => {
     expect(launches).toEqual(["r1"]);
   });
 
+  it("launches runs on a platform the app doesn't ship for, without visual comparison (Linux CI)", async () => {
+    const real = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "linux" });
+    try {
+      vi.useFakeTimers();
+      const { executor, launches } = setup((url) => (url.endsWith("/start") ? json(200, { status: "running", claimToken: "c", leaseExpiresAt: lease(), leaseRemainingMs: 90_000 }) : json(200, {})));
+      executor.enqueue(message("r1"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(launches).toEqual(["r1"]);
+    } finally {
+      Object.defineProperty(process, "platform", real);
+    }
+  });
+
   it("stops within 10 s of losing the lease and reports nothing", async () => {
     vi.useFakeTimers();
     let heartbeat = 0;

@@ -1,6 +1,6 @@
 // PC runs (stage 4 contract section 4, desktop spec 2): queue, start ACK, lease heartbeat, runner, completion.
 import { Buffer } from "node:buffer";
-import { detectRuntime, runWithRetries, type RunPlanOptions, type UploadFile, type VisualRegressionOptions } from "@defe2end/runner";
+import { detectRuntime, runWithRetries, type RunPlanOptions, type RunRuntime, type UploadFile, type VisualRegressionOptions } from "@defe2end/runner";
 import {
   DESKTOP_MAX_CONCURRENCY,
   DESKTOP_TIMINGS,
@@ -346,7 +346,7 @@ export class RunExecutor {
           return this.opts.runPlan({ ...plan, attempt }, {
             headless,
             // Someone at this PC may close the browser window: that is a cancel, not a failure (contract 4.4.1).
-            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...(message.masking ? { masking: message.masking } : {}), render: { runtime: detectRuntime({ desktop: true }) }, ...this.visualOptions(job, signal) });
+            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...(message.masking ? { masking: message.masking } : {}), ...(desktopRuntime() ? { render: { runtime: desktopRuntime()! } } : {}), ...this.visualOptions(job, signal) });
         },
       });
       ({ stopCause, attemptCount, passedAfterRetry } = retried);
@@ -375,7 +375,8 @@ export class RunExecutor {
   private visualOptions(job: Job, signal: AbortSignal): { visual?: VisualRegressionOptions } {
     const list = job.message.baselines;
     if (!list || job.message.comparison) return {};
-    const runtime = detectRuntime({ desktop: true });
+    const runtime = desktopRuntime();
+    if (!runtime) return {};
     const byStep = new Map(list.filter((b) => b.runtime === runtime).map((b) => [b.stepId, b]));
     return { visual: { runtime, baselineFor: (stepId) => byStep.get(stepId), readBaseline: (versionId) => this.baseline(job, versionId, signal) } };
   }
@@ -427,5 +428,17 @@ export class RunExecutor {
     } catch {
       // Best effort: the completion carries every step again.
     }
+  }
+}
+
+/**
+ * This PC's runtime for visual baselines, or undefined where the app isn't shipped (the tests also run on Linux
+ * CI): there runs still work, only render conditions and visual comparison are left out.
+ */
+function desktopRuntime(): RunRuntime | undefined {
+  try {
+    return detectRuntime({ desktop: true });
+  } catch {
+    return undefined;
   }
 }
