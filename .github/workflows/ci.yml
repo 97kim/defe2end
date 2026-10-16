@@ -52,6 +52,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: node --test scripts/stamp-version.test.mjs
       - run: node scripts/cleanroom-check.mjs --self-test
       - run: node scripts/cleanroom-check.mjs
         env:
