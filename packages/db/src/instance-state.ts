@@ -7,7 +7,7 @@ export class RestoreInProgressError extends Error {
   constructor() {
     super(
       "A restore into this database started and did not finish. Start over on an empty database and storage " +
-        "(see docs/backup-restore.md); the instance won't run half restored.",
+        "(see docs/guide/backup-restore.md); the instance won't run half restored.",
     );
   }
 }

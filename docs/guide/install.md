@@ -19,6 +19,8 @@ cd defe2end/deploy
 
 You need three files from `deploy/`: `docker-compose.yml`, `chromium-seccomp.json` and `.env.example`. Copying just those to another folder works too.
 
+`docker-compose.yml` runs the published images. To build from source instead (development, CI), use `deploy/docker-compose.build.yml`.
+
 ## 2. Create `.env`
 
 ```sh
