@@ -1,4 +1,5 @@
-import { assertMigrationsMatch, assertNotRestoring, type PrismaClient } from "@defe2end/db";
+import { assertMigrationsMatch, assertNotRestoring, assertServerVersion, type PrismaClient } from "@defe2end/db";
+import { VERSIONS } from "@defe2end/shared";
 import { createKeyCheck, generateLinkToken, hashLinkToken, parseEncryptionKey, verifyKeyCheck } from "@defe2end/shared/server";
 
 /**
@@ -52,6 +53,7 @@ export async function runStartup(db: PrismaClient): Promise<void> {
       throw new Error("BETTER_AUTH_SECRET must be set to at least 32 characters (e.g. `openssl rand -base64 32`)");
     }
     await assertMigrationsMatch(db);
+    await assertServerVersion(db, VERSIONS.server);
     await assertNotRestoring(db);
     await checkEncryptionKey(db, process.env.DEFE2END_ENCRYPTION_KEY);
   } catch (err) {

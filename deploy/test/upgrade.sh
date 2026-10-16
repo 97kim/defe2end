@@ -4,8 +4,9 @@
 # volumes to this version's images. Checks that this version's web refuses the old database until migrate ran,
 # then migrates and checks login, one new run, the secret and the old screenshot.
 #
-# The previous version is the source at UPGRADE_FROM_REF (built with that commit's compose). Once a release
-# exists, set UPGRADE_FROM_VERSION=X.Y.Z instead to start its published images with deploy/docker-compose.yml.
+# The previous version is UPGRADE_FROM_VERSION=X.Y.Z (its published images, with deploy/docker-compose.yml) or,
+# without it, the source at UPGRADE_FROM_REF built with that commit's compose. deploy/test/previous-release.sh
+# picks the latest stable release tag before HEAD for CI.
 # Usage: deploy/test/upgrade.sh   (PROJECT and WEB_PORT override the defaults; needs git history and node)
 set -eu
 cd "$(dirname "$0")/.."
@@ -84,11 +85,18 @@ echo "made: workspace $SLUG, run $RUN with artifact $ARTIFACT"
 echo "== switch to this version"
 old down
 new build
-echo "== this version's web refuses the old database until migrate ran"
 new up -d --wait postgres
-if new run --rm --no-deps -T web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
-grep -q "Run this version's migrate first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
-grep "not applied yet" "$WORK/out" | head -n 1
+# Only when this version adds migrations: otherwise the old database already matches.
+FROM_TREE="${UPGRADE_FROM_VERSION:+v$UPGRADE_FROM_VERSION}"
+FROM_TREE="${FROM_TREE:-$UPGRADE_FROM_REF}"
+if [ "$(git ls-tree --full-tree --name-only "$FROM_TREE" packages/db/prisma/migrations/)" != "$(git ls-tree --full-tree --name-only HEAD packages/db/prisma/migrations/)" ]; then
+  echo "== this version's web refuses the old database until migrate ran"
+  if new run --rm --no-deps -T web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
+  grep -q "Run this version's migrate first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
+  grep "not applied yet" "$WORK/out" | head -n 1
+else
+  echo "== no new migrations since $FROM_TREE: skipping the refusal before migrate"
+fi
 
 echo "== migrate and start"
 rm -f "$WORK/cookies"

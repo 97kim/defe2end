@@ -27,7 +27,7 @@ import {
   type Role,
   type RunTrigger,
 } from "@defe2end/shared";
-import type { Prisma } from "@defe2end/db";
+import { isAutomationPaused, type Prisma } from "@defe2end/db";
 import { runCapabilities } from "../run-create";
 import { getDb } from "../db";
 import { bearerToken, desktopError, verifyDesktopToken, type DesktopPrincipal } from "./auth";
@@ -98,6 +98,8 @@ export class DesktopStreamSession {
     }
 
     const out: DesktopStreamMessage[] = [];
+    // After a restore, queued runs wait for `resume-automation`: the app gets none until then.
+    if (await isAutomationPaused(db)) return out;
     for (const runId of await dispatchCandidates(db, deviceId)) {
       const run = await markDispatched(db, runId, deviceId, this.connectionId, { check: missingOnThisConnection });
       if (!run) continue;

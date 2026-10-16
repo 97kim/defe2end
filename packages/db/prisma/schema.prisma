@@ -142,6 +142,8 @@ model InstanceSetting {
   restoreInProgressAt    DateTime?
   /// Set by `restore`: schedules, notification deliveries and queued runs wait until `resume-automation`.
   automationPausedAt     DateTime?
+  /// Server version whose migrate image last ran; web and worker of another release refuse to start.
+  migratedByVersion      String?
 }
 
 // --- Workspaces and access ------------------------------------------------------

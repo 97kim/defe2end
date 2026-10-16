@@ -122,6 +122,16 @@ describeDb("desktop server", () => {
     expect((await getDb().run.findUnique({ where: { id: run.id } }))!.status).toBe("queued");
   });
 
+  it("sends no runs while automation is paused after a restore, and sends them once resumed", async () => {
+    const { token } = await tokenFor();
+    const session = await connect(token);
+    await createDesktopRun();
+    await getDb().instanceSetting.upsert({ where: { id: 1 }, create: { id: 1, automationPausedAt: new Date() }, update: { automationPausedAt: new Date() } });
+    expect(await session.tick()).toEqual([]);
+    await getDb().instanceSetting.update({ where: { id: 1 }, data: { automationPausedAt: null } });
+    expect((await session.tick()).map((m) => m.type)).toEqual(["run"]);
+  });
+
   it("start is conditional and repeatable; complete re-judges, then answers run_finalized", async () => {
     const { token } = await tokenFor();
     const session = await connect(token);

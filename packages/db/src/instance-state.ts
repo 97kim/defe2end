@@ -44,6 +44,23 @@ export class MigrationMismatchError extends Error {
   }
 }
 
+export class ServerVersionMismatchError extends Error {
+  constructor(version: string, migratedBy: string | null) {
+    super(
+      `This server is version ${version}, but the database was last migrated by ${migratedBy ? `version ${migratedBy}` : "an unknown version"}. ` +
+        `Run the migrate image of version ${version} first (docker compose run --rm migrate), and run web, worker and migrate of the same version.`,
+    );
+  }
+}
+
+/** A release's web and worker run only on a database its own migrate image migrated. Development builds (0.0.0) skip this. */
+export async function assertServerVersion(db: PrismaClient, version: string): Promise<void> {
+  if (version === "0.0.0") return;
+  const setting = await db.instanceSetting.findUnique({ where: { id: 1 }, select: { migratedByVersion: true } });
+  const migratedBy = setting?.migratedByVersion ?? null;
+  if (migratedBy !== version) throw new ServerVersionMismatchError(version, migratedBy);
+}
+
 /** Web and worker start only when the applied migrations are exactly the ones this build knows. */
 export async function assertMigrationsMatch(db: PrismaClient): Promise<void> {
   const rows = await db.$queryRaw<{ migration_name: string }[]>`
