@@ -1,7 +1,7 @@
-import { finishRun, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
-import { runPlan, runWithRetries, type RunPlanOptions, type UploadFile } from "@defe2end/runner";
+import { finishRun, pinnedBaselines, settleCreatedBaseline, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
+import { runPlan, runWithRetries, type RunPlanOptions, type UploadFile, type VisualRegressionOptions } from "@defe2end/runner";
 import { ArtifactLimitError, maskSecrets, storageStateSchema, runOptionsSchema, runSnapshotSchema, RUN_LIMITS, type AbortReason, type ArtifactSink, type ExecutionPlan, type RunVerdict } from "@defe2end/shared";
-import { decryptSecret, type StorageDriver } from "@defe2end/shared/server";
+import { decryptSecret, readStoredBytes, storageBaselineFiles, type StorageDriver } from "@defe2end/shared/server";
 import type { WorkerConfig } from "./config.js";
 import { storageSink } from "./sink.js";
 
@@ -126,7 +126,9 @@ async function runAttempt(
   const { id: runId, claimToken } = claimed;
   const attempt = plan.attempt ?? 1;
   const logLines: string[] = [];
+  const visual = await visualOptions(deps, claimed);
   const runOptions: RunPlanOptions = {
+    ...(visual ? { visual } : {}),
     sink,
     signal,
     owner: deps.owner,
@@ -140,6 +142,7 @@ async function runAttempt(
       try {
         // Step results are written in order; a refused write means the lease is gone.
         if (!(await recordStepResult(db, runId, claimToken, { ...result, attempt }))) stop("worker_lost");
+        else if (result.visualVerdict === "created") await settleFirstBaseline(deps, runId, attempt, result.index, log);
       } catch (err) {
         log(`step result not stored: ${(err as Error).message}`);
         stop("worker_lost");
@@ -237,4 +240,31 @@ async function requesterSession(deps: ExecuteDeps, claimed: ClaimedRun): Promise
   const session = await subjectAuthSession(deps.db, claimed.environmentId, subjectOfRun(claimed));
   if (!session) throw new AuthSessionMissingError();
   return storageStateSchema.parse(JSON.parse(decryptSecret(session.encryptedState, deps.config.encryptionKey)));
+}
+
+/** Stage 7 section 4: the pinned baselines, read straight from storage. None for comparison children. */
+async function visualOptions(deps: ExecuteDeps, claimed: ClaimedRun): Promise<VisualRegressionOptions | undefined> {
+  const run = await deps.db.run.findUnique({ where: { id: claimed.id }, select: { comparisonId: true } });
+  if (run?.comparisonId || !runSnapshotSchema.parse(claimed.snapshot).visual) return undefined;
+  const pins = (await pinnedBaselines(deps.db, claimed.id)).filter((p) => p.runtime === "server");
+  const byStep = new Map(pins.map((p) => [p.stepId, p]));
+  return {
+    runtime: "server",
+    baselineFor: (stepId) => byStep.get(stepId),
+    readBaseline: async (versionId) => {
+      const pin = pins.find((p) => p.versionId === versionId);
+      if (!pin) throw new Error("Baseline is not pinned for this run");
+      return readStoredBytes(deps.storage, pin.storageKey);
+    },
+  };
+}
+
+/** First baseline of a key (section 4): copy the screenshot, or compare with the run that won the race. */
+async function settleFirstBaseline(deps: ExecuteDeps, runId: string, attempt: number, index: number, log: (message: string) => void): Promise<void> {
+  try {
+    const step = await deps.db.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt, index } }, select: { id: true } });
+    if (step) await settleCreatedBaseline(deps.db, storageBaselineFiles(deps.storage), step.id);
+  } catch (err) {
+    log(`first baseline not stored: ${(err as Error).message}`);
+  }
 }

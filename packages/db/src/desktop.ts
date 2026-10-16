@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
 import { settleGroup } from "./groups.js";
 import { enqueueFinishNotifications } from "./notifications.js";
+import { dropRunBaselinePins, serverVerdictWarnings } from "./visual-baselines.js";
 import { GROUP_CHILD_STARTABLE, isGroupChildStartable, withOwnedRun } from "./runs.js";
 
 type Db = PrismaClient;
@@ -242,11 +243,26 @@ export interface DesktopStepInput {
   expected?: string;
   actual?: string;
   possibleDuplicate?: boolean;
+  visualVerdict?: "created" | "match" | "shifted" | "changed" | "size_mismatch" | "skipped" | "incomparable";
+  visualDiffPercent?: number;
+  visualShiftDiffPercent?: number;
+  visualShift?: { x: number; y: number };
+  visualBaselineVersionId?: string;
+  render?: Prisma.InputJsonValue;
 }
 
 async function upsertSteps(tx: Tx, runId: string, steps: DesktopStepInput[]): Promise<void> {
   for (const step of steps) {
     const data = { ...step, startedAt: new Date(step.startedAt) };
+    // Visual fields are taken once, when the step is first reported: the server may have settled them since
+    // (first-baseline race, verdict check), and a later report must not overwrite that (stage 7 section 4).
+    const existing = await tx.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { visualVerdict: true, status: true, errorCode: true, errorMessage: true } });
+    if (existing?.visualVerdict) {
+      const { visualVerdict: _v, visualDiffPercent: _d, visualShiftDiffPercent: _s, visualShift: _sh, visualBaselineVersionId: _b, render: _r, ...rest } = data;
+      const keep = existing.status === "warning" && existing.errorCode === "warning" ? { status: existing.status, errorCode: existing.errorCode, errorMessage: existing.errorMessage } : {};
+      await tx.stepResult.update({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, data: { ...rest, ...keep } });
+      continue;
+    }
     await tx.stepResult.upsert({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, create: { runId, ...data }, update: data });
   }
 }
@@ -284,10 +300,11 @@ export async function completeDesktopRun(db: Db, runId: string, claimToken: stri
     const [row] = await tx.$queryRaw<{ groupRunId: string | null }[]>`
       UPDATE "Run" SET
         status = ${final.status}::"RunStatus", "errorCode" = ${final.errorCode ?? null}, "errorMessage" = ${final.errorMessage ?? null},
-        "warningCount" = ${final.warningCount}::int, "attemptCount" = ${final.attemptCount}::int, "passedAfterRetry" = ${final.passedAfterRetry},
+        "warningCount" = ${final.warningCount + (await serverVerdictWarnings(tx, runId))}::int, "attemptCount" = ${final.attemptCount}::int, "passedAfterRetry" = ${final.passedAfterRetry},
         "finishedAt" = clock_timestamp(), "leaseExpiresAt" = NULL
       WHERE id = ${runId}
       RETURNING "groupRunId"`;
+    await dropRunBaselinePins(tx, runId);
     if (!row!.groupRunId) await enqueueFinishNotifications(tx, { runIds: [runId] });
     return row!.groupRunId;
   });
