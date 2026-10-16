@@ -73,7 +73,6 @@ Set by the runtime or the build. Don't set these yourself.
 |---|---|---|---|---|
 | `NEXT_RUNTIME` | web | — | — | Set by Next.js. |
 | `NEXT_DIST_DIR` | web | — | `.next` | Build output folder, used by tests. |
-| `npm_package_version` | web | — | — | Server version reported to the desktop app. |
 
 ## Not in the example compose file
 
