@@ -115,3 +115,13 @@ jobs:
       # Builds the images, checks health, the worker's Chromium sandbox and a real run through the
       # compose stack, then tears everything down (the script makes its own throwaway secrets).
       - run: sh apps/worker/scripts/compose-smoke.sh
+
+  backup-restore:
+    name: Backup and restore through compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # Data -> backup (refused while the app runs) -> empty stack -> restore with the same key -> automation
+      # paused until resume -> data, files, secret. Also: another key refused, --without-key, half-done restore.
+      - run: sh deploy/test/backup-restore.sh

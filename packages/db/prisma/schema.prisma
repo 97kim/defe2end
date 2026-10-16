@@ -138,6 +138,10 @@ model InstanceSetting {
   selfSignupDomains      String[]  @default([])
   /// Recorder selector candidates, 4th priority, in this order (stage 4 contract section 7). Empty = skipped.
   recorderTestAttributes String[]  @default([])
+  /// Set by `restore` while it runs; web and worker refuse to start while it is set (a half-restored instance).
+  restoreInProgressAt    DateTime?
+  /// Set by `restore`: schedules, notification deliveries and queued runs wait until `resume-automation`.
+  automationPausedAt     DateTime?
 }
 
 // --- Workspaces and access ------------------------------------------------------

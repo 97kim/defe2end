@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { claimNextRun, deleteAbandonedComparisonFiles, finishComparisons, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
+import { isAutomationPaused, claimNextRun, deleteAbandonedComparisonFiles, finishComparisons, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
 import { RUNNER_VERSION, sweepBrowsers } from "@defe2end/runner";
 import { IDEMPOTENCY } from "@defe2end/shared";
 import { decryptSecret, LocalStorage } from "@defe2end/shared/server";
@@ -74,6 +74,7 @@ export function createWorker(db: PrismaClient, config: WorkerConfig): Worker {
   const notify = () => {
     notifying ??= (async () => {
       try {
+        if (await isAutomationPaused(db)) return;
         await enqueueDueReports(db);
         await sendDueNotifications(db, { decrypt: (c) => decryptSecret(c, config.encryptionKey) });
       } catch (err) {
@@ -90,6 +91,7 @@ export function createWorker(db: PrismaClient, config: WorkerConfig): Worker {
   const fireSchedules = () => {
     firing ??= (async () => {
       try {
+        if (await isAutomationPaused(db)) return;
         for (const result of await fireDueSchedules(db, fireDeps)) {
           for (const fire of result.fires) console.log(`schedule ${result.scheduleId}: ${fire.status}${fire.reasonCode ? `(${fire.reasonCode})` : ""}`);
         }
@@ -109,6 +111,8 @@ export function createWorker(db: PrismaClient, config: WorkerConfig): Worker {
 
   const claimRuns = async () => {
     try {
+      // After a restore, queued runs wait for `resume-automation` (stage 8 contract section 4).
+      if (await isAutomationPaused(db)) return;
       while (!stopping && running.size < config.concurrency) {
         const freeMb = (await storage.freeBytes()) / 1024 / 1024;
         if (freeMb < config.minFreeDiskMb) {
