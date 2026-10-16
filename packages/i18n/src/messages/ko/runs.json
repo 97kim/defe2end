@@ -301,6 +301,12 @@
     "approving": "승인하는 중…",
     "approved": "기준 v{version}으로 승인했어요.",
     "approveConflict": "그 사이에 기준이 바뀌었어요. 페이지를 새로 고친 뒤 다시 승인하세요.",
-    "approveFailed": "승인하지 못했어요: {message}"
+    "approveFailed": "승인하지 못했어요: {message}",
+    "warning": {
+      "changed": "스크린샷이 기준과 {diff} 달라요. 의도한 변경이면 새 기준으로 승인하세요.",
+      "changedShifted": "스크린샷이 기준과 {diff} 달라요(이동 보정 뒤 {shifted}). 의도한 변경이면 새 기준으로 승인하세요.",
+      "sizeMismatch": "스크린샷 크기가 기준({width}×{height})과 달라요. 의도한 변경이면 새 기준으로 승인하세요.",
+      "sizeMismatchUnknown": "스크린샷 크기가 기준과 달라요. 의도한 변경이면 새 기준으로 승인하세요."
+    }
   }
 }

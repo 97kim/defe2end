@@ -10,6 +10,7 @@ import * as baselineRoute from "../../app/api/desktop/runs/[id]/baselines/[versi
 import * as completeRoute from "../../app/api/desktop/runs/[id]/complete/route";
 import * as startRoute from "../../app/api/desktop/runs/[id]/start/route";
 import * as tokenRoute from "../../app/api/desktop/token/route";
+import * as baselineImageRoute from "../../app/api/w/[slug]/runs/[id]/baselines/[versionId]/route";
 import * as approveRoute from "../../app/api/w/[slug]/runs/[id]/steps/[stepResultId]/approve-baseline/route";
 import * as runsRoute from "../../app/api/w/[slug]/runs/route";
 import { describeDb, resetDatabase } from "../../test/db";
@@ -182,5 +183,20 @@ describeDb("desktop visual regression", () => {
     expect(child.baselines).toBeUndefined();
     const { id: plain } = await createRun();
     expect((await buildRunMessage((await getDb().run.findUniqueOrThrow({ where: { id: plain } })) as never)).comparison).toBeUndefined();
+  });
+
+  it("the run page's baseline image is the stored PNG, for the runs that used it, in this workspace only", async () => {
+    const { run, version } = await firstBaseline();
+    const get = (slug: string, runId: string, versionId: string, headers = editor) => callRoute(baselineImageRoute.GET, { params: { slug, id: runId, versionId }, headers });
+    const res = await get(ctx.workspace.slug, run.id, version.id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(png(10));
+    expect((await get(ctx.workspace.slug, run.id, version.id, await sessionHeaders(ctx.users.VIEWER.id))).status).toBe(200);
+    const other = await start();
+    expect((await get(ctx.workspace.slug, other.id, version.id)).status).toBe(404);
+    const elsewhere = await workspaceWithRoles();
+    expect((await get(elsewhere.workspace.slug, run.id, version.id, await sessionHeaders(elsewhere.users.EDITOR.id))).status).toBe(404);
   });
 });

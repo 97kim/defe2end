@@ -27,6 +27,27 @@ function percent(v: number): string {
   return `${v.toFixed(2).replace(/\.?0+$/, "")}%`;
 }
 
+/**
+ * The warning of a `changed`/`size_mismatch` step in the reader's language, from the verdict and its values (the
+ * runner's stored message is English, like its other messages). Null for other verdicts.
+ */
+export function VisualWarningText({ visual }: { visual: StepVisualView }) {
+  const t = useTranslations("runs.visual");
+  if (visual.verdict === "changed" && visual.diffPercent !== null) {
+    return visual.shiftDiffPercent !== null
+      ? t("warning.changedShifted", { diff: percent(visual.diffPercent), shifted: percent(visual.shiftDiffPercent) })
+      : t("warning.changed", { diff: percent(visual.diffPercent) });
+  }
+  if (visual.verdict === "size_mismatch") {
+    return visual.baseline ? t("warning.sizeMismatch", { width: visual.baseline.width, height: visual.baseline.height }) : t("warning.sizeMismatchUnknown");
+  }
+  return null;
+}
+
+/** Whether `VisualWarningText` has a text for this verdict. */
+export const hasVisualWarningText = (visual: StepVisualView | null | undefined): visual is StepVisualView =>
+  !!visual && ((visual.verdict === "changed" && visual.diffPercent !== null) || visual.verdict === "size_mismatch");
+
 export function VisualBadge({ visual }: { visual: StepVisualView }) {
   const t = useTranslations("runs.visual");
   return <span className={`inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-meta font-semibold ${BADGE[visual.verdict]}`}>{t(`verdict.${visual.verdict}`)}</span>;
@@ -77,10 +98,10 @@ export function VisualDetail({ visual, shot, diff }: { visual: StepVisualView; s
               {pane.url ? (
                 <a href={pane.url} target="_blank" rel="noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element -- authenticated API response, not a static asset */}
-                  <img src={pane.url} alt={pane.label} loading="lazy" className="h-36 w-full rounded-control border border-border object-cover object-top" />
+                  <img src={pane.url} alt={pane.label} loading="lazy" className="aspect-video w-full rounded-control border border-border bg-bg-subtle object-contain object-left-top" />
                 </a>
               ) : (
-                <span className="flex h-36 items-center justify-center rounded-control border border-dashed border-border text-text-muted">—</span>
+                <span className="flex aspect-video items-center justify-center rounded-control border border-dashed border-border text-text-muted">—</span>
               )}
             </figure>
           ))}
