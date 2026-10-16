@@ -6,7 +6,7 @@ import { useAiBridge, useProviderStatus, type AiEvent, type Provider } from "../
 import { ProviderNotices, useRefusalText, useTurnErrorText } from "../../../../../components/ai/provider-notice";
 import { Alert, Button, Dialog } from "../../../../../components/ui";
 import type { DiagnosisView } from "../../../../../lib/diagnoses";
-import { hasConsent, recordConsent } from "../../../../../lib/diagnosis-consent";
+import { hasConsent, recordConsent, sendLock } from "../../../../../lib/diagnosis-consent";
 import { buildDiagnosisPrompt, diagnosisLogText, diagnosisThreadId, pickDiagnosisArtifacts } from "../../../../../lib/diagnosis-input";
 import type { RunDetail } from "../../../../../lib/run-read";
 import { SparklesIcon } from "../run-ui";
@@ -43,6 +43,8 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const thread = useRef<string | null>(null);
+  const lock = useRef(sendLock());
+  const [sending, setSending] = useState(false);
 
   const ready = (states ?? []).filter((s) => s.state === "ready").map((s) => s.provider);
   const chosen = provider && ready.includes(provider) ? provider : (ready[0] ?? null);
@@ -95,22 +97,28 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
   }
 
   async function send() {
-    if (!bridge || !chosen || !prompt) return;
-    setError(null);
-    // Withdrawn elsewhere since the preview (or unknown): nothing leaves; ask again.
-    if (!(await hasConsent())) {
-      setPrompt(undefined);
-      return setConsentOpen(true);
-    }
-    setOutput("");
-    const id = diagnosisThreadId();
-    thread.current = id;
-    setRunning(true);
-    const result = await bridge.send({ mode: "diagnosis", threadId: id, provider: chosen, text: prompt });
-    if (!result.ok) {
-      thread.current = null;
-      setRunning(false);
-      setError(refusalText(result.reason));
+    if (!bridge || !chosen || !prompt || !lock.current.claim()) return;
+    setSending(true);
+    try {
+      setError(null);
+      // Withdrawn elsewhere since the preview (or unknown): nothing leaves; ask again.
+      if (!(await hasConsent())) {
+        setPrompt(undefined);
+        return setConsentOpen(true);
+      }
+      setOutput("");
+      const id = diagnosisThreadId();
+      thread.current = id;
+      setRunning(true);
+      const result = await bridge.send({ mode: "diagnosis", threadId: id, provider: chosen, text: prompt });
+      if (!result.ok) {
+        thread.current = null;
+        setRunning(false);
+        setError(refusalText(result.reason));
+      }
+    } finally {
+      lock.current.release();
+      setSending(false);
     }
   }
 
@@ -148,7 +156,7 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
                   {t("chat.stop")}
                 </Button>
               ) : prompt ? (
-                <Button type="button" onClick={send}>
+                <Button type="button" onClick={send} disabled={sending}>
                   {t("chat.send")}
                 </Button>
               ) : null}
