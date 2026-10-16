@@ -35,13 +35,32 @@ import(workerData.coreUrl).then(
 );
 `;
 
+let workerFile: string | null = null;
+
+/**
+ * `new Worker(path)` with a runtime path. Constructed indirectly so web bundlers don't read it as a worker
+ * entry to bundle (with a dynamic path they would pull in every file of the app).
+ */
+function startWorkerFile(file: string, workerData: unknown): Worker {
+  return Reflect.construct(Worker, [file, { workerData }]) as Worker;
+}
+
+/**
+ * Starts comparisons from this bundled worker file (`@defe2end/shared/dist/visual-compare-worker.cjs`, or a copy)
+ * instead of loading the core next to this module. Bundled callers set it: the desktop app (the file sits
+ * outside its archive) and the web server (bundling moves this module away from the core). Null resets.
+ */
+export function setVisualCompareWorkerFile(file: string | null): void {
+  workerFile = file;
+}
+
 /**
  * Compares two PNGs in a worker thread. The inputs are copied, never detached. Rejects on an unreadable PNG
  * or a worker failure; the caller decides what that means (visual regression records `skipped`).
  */
 export function compareImages(a: Uint8Array, b: Uint8Array, opts: VisualCompareOptions): Promise<VisualCompareResult> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(WORKER_SOURCE, { eval: true, workerData: { coreUrl: CORE_URL, a, b, opts } });
+    const worker = workerFile ? startWorkerFile(workerFile, { a, b, opts }) : new Worker(WORKER_SOURCE, { eval: true, workerData: { coreUrl: CORE_URL, a, b, opts } });
     let settled = false;
     const finish = (fn: () => void) => {
       if (settled) return;

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
 import { settleGroup } from "./groups.js";
 import { enqueueFinishNotifications } from "./notifications.js";
-import { dropRunBaselinePins, serverVerdictWarnings } from "./visual-baselines.js";
+import { dropRunBaselinePins, finalWarningCount } from "./visual-baselines.js";
 import { GROUP_CHILD_STARTABLE, isGroupChildStartable, withOwnedRun } from "./runs.js";
 
 type Db = PrismaClient;
@@ -251,9 +251,22 @@ export interface DesktopStepInput {
   render?: Prisma.InputJsonValue;
 }
 
+/**
+ * An app verdict naming a baseline version this run didn't pin is not stored as such (stage 7 section 4): it
+ * becomes `skipped`, without the version (which may not even exist) and without the warning it caused.
+ */
+async function withPinnedVersion(tx: Tx, runId: string, step: DesktopStepInput): Promise<DesktopStepInput> {
+  if (!step.visualBaselineVersionId) return step;
+  const pin = await tx.runBaselinePin.findUnique({ where: { runId_versionId: { runId, versionId: step.visualBaselineVersionId } }, select: { runId: true } });
+  if (pin) return step;
+  const { visualBaselineVersionId: _v, visualDiffPercent: _d, visualShiftDiffPercent: _s, visualShift: _sh, ...rest } = step;
+  const warned = rest.status === "warning" && rest.errorCode === "warning";
+  return { ...rest, visualVerdict: "skipped", ...(warned ? { status: "passed", errorCode: undefined, errorMessage: undefined } : {}) };
+}
+
 async function upsertSteps(tx: Tx, runId: string, steps: DesktopStepInput[]): Promise<void> {
   for (const step of steps) {
-    const data = { ...step, startedAt: new Date(step.startedAt) };
+    const data = { ...(await withPinnedVersion(tx, runId, step)), startedAt: new Date(step.startedAt) };
     // Visual fields are taken once, when the step is first reported: the server may have settled them since
     // (first-baseline race, verdict check), and a later report must not overwrite that (stage 7 section 4).
     const existing = await tx.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { visualVerdict: true, status: true, errorCode: true, errorMessage: true } });
@@ -301,7 +314,7 @@ export async function completeDesktopRun(db: Db, runId: string, claimToken: stri
     const [row] = await tx.$queryRaw<{ groupRunId: string | null }[]>`
       UPDATE "Run" SET
         status = ${final.status}::"RunStatus", "errorCode" = ${final.errorCode ?? null}, "errorMessage" = ${final.errorMessage ?? null},
-        "warningCount" = ${final.warningCount + (await serverVerdictWarnings(tx, runId))}::int, "attemptCount" = ${final.attemptCount}::int, "passedAfterRetry" = ${final.passedAfterRetry},
+        "warningCount" = ${await finalWarningCount(tx, runId, final.warningCount)}::int, "attemptCount" = ${final.attemptCount}::int, "passedAfterRetry" = ${final.passedAfterRetry},
         "finishedAt" = clock_timestamp(), "leaseExpiresAt" = NULL
       WHERE id = ${runId}
       RETURNING "groupRunId"`;

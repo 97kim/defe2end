@@ -31,7 +31,8 @@ import {
   type DesktopCompleteRequest,
   type StepOutcome,
 } from "@defe2end/shared";
-import { artifactKey, BASELINE_MAX_BYTES, storageBaselineFiles } from "@defe2end/shared/server";
+import { artifactKey, BASELINE_MAX_BYTES } from "@defe2end/shared/server";
+import { baselineFiles } from "../visual-compare";
 import { getDb } from "../db";
 import { getStorage } from "../storage";
 import { DesktopHttpError, desktopError, type DesktopPrincipal } from "./auth";
@@ -119,7 +120,7 @@ async function settleVisualSteps(runId: string, steps: DesktopStepInput[]): Prom
     const row = await db.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { id: true, visualVerdict: true, visualServerVerdict: true, visualBaselineVersionId: true } });
     if (!row || row.visualServerVerdict) continue;
     if (row.visualVerdict === "created") {
-      if (!row.visualBaselineVersionId) await settleCreatedBaseline(db, storageBaselineFiles(getStorage()), row.id);
+      if (!row.visualBaselineVersionId) await settleCreatedBaseline(db, baselineFiles(), row.id);
     } else await checkReportedVisualVerdict(db, row.id);
   }
 }

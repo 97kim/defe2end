@@ -3,7 +3,7 @@
 // after the lock; now() would be the transaction start) for leases, and conditional updates so a terminal
 // status never changes again. Creation lives in the web app (it re-validates the session actor) and takes
 // `lockWorkspaceRuns` first. Lock order is always workspace → run.
-import { dropRunBaselinePins, serverVerdictWarnings } from "./visual-baselines.js";
+import { dropRunBaselinePins, finalWarningCount } from "./visual-baselines.js";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
 import { settleGroup } from "./groups.js";
@@ -252,7 +252,7 @@ export async function finishRun(db: Db, runId: string, claimToken: string, verdi
         "errorCode" = ${verdict.errorCode ?? null},
         "errorMessage" = ${verdict.errorMessage ?? null},
         "browserVersion" = ${verdict.browserVersion ?? null},
-        "warningCount" = ${(verdict.warningCount ?? 0) + (await serverVerdictWarnings(tx, runId))}::int,
+        "warningCount" = ${await finalWarningCount(tx, runId, verdict.warningCount ?? 0)}::int,
         "passedAfterRetry" = ${verdict.passedAfterRetry ?? false},
         "finishedAt" = clock_timestamp(),
         "leaseExpiresAt" = NULL

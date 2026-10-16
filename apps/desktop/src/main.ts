@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, shell,
 import { RUNNER_VERSION, runPlan } from "@defe2end/runner";
 import { messages } from "@defe2end/i18n";
 import { DEFAULT_DEVICE, DESKTOP_LABEL_MAX, type AppUpdateRequired } from "@defe2end/shared";
+import { setVisualCompareWorkerFile } from "@defe2end/shared/server";
 import type { DesktopIdentity } from "./core/api-client.js";
 import { ConnectionManager, type ConnectionState } from "./core/connection.js";
 import type { RunProgress } from "./core/executor.js";
@@ -26,6 +27,9 @@ import { detectAll, userShellPath, type ProviderStatus } from "./core/ai/detect.
 import type { McpServerSpec } from "./core/ai/launch.js";
 
 const pagePath = path.join(__dirname, "..", "static", "index.html");
+// Visual regression compares in a worker thread started from this bundled file, unpacked from the archive
+// (electron-builder `asarUnpack`) because a worker thread reads plain files only.
+setVisualCompareWorkerFile(unpackedPath(path.join(__dirname, "visual-compare-worker.cjs")));
 const pageUrl = pathToFileURL(pagePath).href;
 /** Server paths where being on the page doesn't mean being signed in. */
 const SIGNED_OUT_PATHS = /^\/(login|signup|setup|api\/auth)(\/|$)/;
@@ -633,4 +637,9 @@ function registerAiIpc(): void {
     return chatManager().send({ threadId: i.threadId, provider, text: i.text, images });
   });
   handle("ai:stop", fromServer, (threadId) => (typeof threadId === "string" ? chatManager().stop(threadId) : false));
+}
+
+/** The `app.asar.unpacked` twin of a path inside the packaged archive; unchanged when not packaged. */
+function unpackedPath(file: string): string {
+  return file.replace(/app\.asar(?=[\\/])/, "app.asar.unpacked");
 }

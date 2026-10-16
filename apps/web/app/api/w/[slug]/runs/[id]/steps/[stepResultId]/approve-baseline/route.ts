@@ -1,10 +1,9 @@
 import { approveBaseline } from "@defe2end/db";
-import { storageBaselineFiles } from "@defe2end/shared/server";
 import { z } from "zod";
 import { ApiError, readJson, route } from "../../../../../../../../../lib/api";
 import { audit } from "../../../../../../../../../lib/audit";
 import { getDb } from "../../../../../../../../../lib/db";
-import { getStorage } from "../../../../../../../../../lib/storage";
+import { baselineFiles } from "../../../../../../../../../lib/visual-compare";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +16,7 @@ const bodySchema = z.strictObject({ expectedVersion: z.number().int().min(0).nul
  */
 export const POST = route<{ slug: string; id: string; stepResultId: string }>({ action: "scenario.write", resource: "scenario" }, async ({ request, params, workspace, actor }) => {
   const body = await readJson(request, bodySchema);
-  const result = await approveBaseline(getDb(), storageBaselineFiles(getStorage()), { workspaceId: workspace.id, runId: params.id, stepResultId: params.stepResultId, expectedVersion: body.expectedVersion, userId: actor.userId! });
+  const result = await approveBaseline(getDb(), baselineFiles(), { workspaceId: workspace.id, runId: params.id, stepResultId: params.stepResultId, expectedVersion: body.expectedVersion, userId: actor.userId! });
   if (!result.ok) {
     if (result.status === 404) throw ApiError.notFound();
     throw new ApiError(result.status === 400 ? "invalid_request" : "conflict", result.message);
