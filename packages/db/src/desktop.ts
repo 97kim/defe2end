@@ -259,7 +259,8 @@ async function upsertSteps(tx: Tx, runId: string, steps: DesktopStepInput[]): Pr
     const existing = await tx.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { visualVerdict: true, status: true, errorCode: true, errorMessage: true } });
     if (existing?.visualVerdict) {
       const { visualVerdict: _v, visualDiffPercent: _d, visualShiftDiffPercent: _s, visualShift: _sh, visualBaselineVersionId: _b, render: _r, ...rest } = data;
-      const keep = existing.status === "warning" && existing.errorCode === "warning" ? { status: existing.status, errorCode: existing.errorCode, errorMessage: existing.errorMessage } : {};
+      // A screenshot step's warning comes from its visual verdict only, so the stored outcome stands.
+      const keep = existing.errorCode === "warning" || rest.errorCode === "warning" ? { status: existing.status, errorCode: existing.errorCode, errorMessage: existing.errorMessage } : {};
       await tx.stepResult.update({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, data: { ...rest, ...keep } });
       continue;
     }

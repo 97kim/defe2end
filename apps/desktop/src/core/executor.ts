@@ -1,6 +1,6 @@
 // PC runs (stage 4 contract section 4, desktop spec 2): queue, start ACK, lease heartbeat, runner, completion.
 import { Buffer } from "node:buffer";
-import { runWithRetries, type RunPlanOptions, type UploadFile } from "@defe2end/runner";
+import { detectRuntime, runWithRetries, type RunPlanOptions, type UploadFile, type VisualRegressionOptions } from "@defe2end/runner";
 import {
   DESKTOP_MAX_CONCURRENCY,
   DESKTOP_TIMINGS,
@@ -21,6 +21,9 @@ import { HttpError, readBody, type DesktopApi } from "./api-client.js";
 import { uploadSink } from "./artifact-sink.js";
 import type { GenerationTicket } from "./generation.js";
 import type { Owner } from "./outbox.js";
+
+/** Largest baseline image the app downloads (stage 7 contract section 4). */
+const BASELINE_DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 /** Start ACK retries: a burst of immediate, 0.5 s, 1.5 s, then 5, 15, 60, 60… seconds between bursts. */
 export const START_BURST_MS = [0, 500, 1_500] as const;
@@ -343,7 +346,7 @@ export class RunExecutor {
           return this.opts.runPlan({ ...plan, attempt }, {
             headless,
             // Someone at this PC may close the browser window: that is a cancel, not a failure (contract 4.4.1).
-            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal) });
+            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...this.visualOptions(job, signal) });
         },
       });
       ({ stopCause, attemptCount, passedAfterRetry } = retried);
@@ -363,6 +366,35 @@ export class RunExecutor {
     } finally {
       this.finish(job, { status: verdict });
     }
+  }
+
+  /**
+   * Stage 7 section 4: judge screenshots against the baselines pinned for this run and this PC's runtime. None
+   * when the message has no baseline list (comparison children, runs without screenshot steps).
+   */
+  private visualOptions(job: Job, signal: AbortSignal): { visual?: VisualRegressionOptions } {
+    const list = job.message.baselines;
+    if (!list || job.message.comparison) return {};
+    const runtime = detectRuntime({ desktop: true });
+    const byStep = new Map(list.filter((b) => b.runtime === runtime).map((b) => [b.stepId, b]));
+    return { visual: { runtime, baselineFor: (stepId) => byStep.get(stepId), readBaseline: (versionId) => this.baseline(job, versionId, signal) } };
+  }
+
+  /** A pinned baseline image from `GET …/baselines/{versionId}`: no redirects (the client refuses them), 20MB cap. */
+  private async baseline(job: Job, versionId: string, signal: AbortSignal): Promise<Uint8Array> {
+    const res = await this.opts.api.request(this.path(job, `baselines/${encodeURIComponent(versionId)}`), { signal, timeoutMs: 60_000 });
+    if (!res.ok || !res.body) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`baseline ${versionId} HTTP ${res.status}`);
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      total += chunk.byteLength;
+      if (total > BASELINE_DOWNLOAD_MAX_BYTES) throw new Error(`baseline ${versionId} is larger than ${BASELINE_DOWNLOAD_MAX_BYTES} bytes`);
+      chunks.push(chunk);
+    }
+    return new Uint8Array(Buffer.concat(chunks));
   }
 
   /** `attachment:<name>` of uploadFile: the version pinned in the `run` message, fetched from the server. */

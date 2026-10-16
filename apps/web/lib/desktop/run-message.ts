@@ -1,6 +1,6 @@
 // The `run` message (stage 4 contract section 4.1): plan with variable values read now, run policy, pinned
 // attachments and, for environments that need it, the requester's login session. Memory only, never logged.
-import { markDesktopVariablesResolved, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, type DispatchedRun } from "@defe2end/db";
+import { markDesktopVariablesResolved, pinnedBaselines, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, type DispatchedRun } from "@defe2end/db";
 import {
   DESKTOP_MAX_CONCURRENCY,
   parseRunAttempts,
@@ -35,6 +35,13 @@ export async function buildRunMessage(run: DispatchedRun): Promise<DesktopRunMes
     ? await db.attachment.findMany({ where: { workspaceId: run.workspaceId, id: { in: snapshot.attachments.map((a) => a.id) } } })
     : [];
   const group = run.groupRunId ? await db.groupRun.findUnique({ where: { id: run.groupRunId }, select: { mode: true } }) : null;
+  // Stage 7 section 4: the baselines pinned at creation (both desktop runtimes; the app uses its own).
+  // Present (even empty) = judge screenshots; comparison children never do.
+  const comparison = await db.run.findUnique({ where: { id: run.id }, select: { comparisonId: true } });
+  const baselines =
+    snapshot.visual && !comparison?.comparisonId
+      ? (await pinnedBaselines(db, run.id)).map(({ storageKey: _key, ...b }) => b)
+      : undefined;
 
   return {
     type: "run",
@@ -63,6 +70,7 @@ export async function buildRunMessage(run: DispatchedRun): Promise<DesktopRunMes
     },
     attachments: attachmentRows.map((a) => ({ id: a.id, name: a.name, version: a.version, contentType: a.contentType, sizeBytes: a.sizeBytes })),
     concurrency: group?.mode === "parallel" ? DESKTOP_MAX_CONCURRENCY : 1,
+    ...(baselines ? { baselines } : {}),
   };
 }
 
