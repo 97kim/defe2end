@@ -69,7 +69,8 @@
       "title": "Send run details to an external AI?",
       "body": "The failed step, errors, browser logs and page structure go to the AI service behind the tool you pick (Anthropic or OpenAI). Emails, phone numbers and URL query values are hidden first, and screenshots aren't sent. You can check what is sent before each diagnosis.",
       "accept": "Agree and continue",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "saveFailed": "Your consent couldn't be saved. Try again."
     }
   },
   "sideBrowser": {

@@ -1,6 +1,6 @@
 // Contract section 0 and 9: generic access rules for every API route, collected from disk.
 // Adding a route adds it here automatically; there is nothing to register.
-import { can, ROLES } from "@defe2end/shared";
+import { can, ROLES, USER_ACTIONS } from "@defe2end/shared";
 import { beforeAll, expect, it } from "vitest";
 import { describeDb, resetDatabase } from "./db";
 import { callRoute, createUser, sessionHeaders, workspaceWithRoles } from "./helpers";
@@ -14,8 +14,8 @@ const PUBLIC_ROUTES = ["/api/auth/[...all]", "/api/desktop/config", "/api/health
 
 const routes = await collectRoutes();
 const workspaceRoutes = routes.filter((r) => r.path.startsWith("/api/w/"));
-// `desktop.connect` is allowed to every signed-in user, so it has no admin-only check.
-const instanceRoutes = routes.filter((r) => r.spec?.resource === "instance" && r.spec.action !== "desktop.connect");
+// User actions (`desktop.connect`, `account.write`) are allowed to every signed-in user, so they have no admin-only check.
+const instanceRoutes = routes.filter((r) => r.spec?.resource === "instance" && !(USER_ACTIONS as readonly string[]).includes(r.spec.action));
 /** Desktop app routes authenticate with a bearer token (`desktopRoute()`), not the session cookie. */
 const desktopTokenRoutes = routes.filter((r) => (r.handler as { desktopAuth?: boolean }).desktopAuth === true);
 /** CI API routes authenticate with a bot token (`botRoute()`); stage 5 contract section 7. */

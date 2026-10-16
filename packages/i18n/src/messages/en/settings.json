@@ -334,5 +334,12 @@
       "not-installed": "Not installed"
     },
     "failed": "Couldn't register. Check that the CLI is installed and try again."
+  },
+  "aiDiagnosisConsent": {
+    "title": "AI failure diagnosis",
+    "agreed": "You agreed to send run details to an external AI on {time}.",
+    "none": "You haven't agreed yet. You'll be asked the first time you diagnose a run.",
+    "withdraw": "Withdraw consent",
+    "failed": "Couldn't change your consent. Try again."
   }
 }

@@ -22,17 +22,20 @@ model Heartbeat {
 // plus our own fields/relations. Better Auth handles authentication only.
 
 model User {
-  id              String    @id
-  name            String
-  email           String
-  emailVerified   Boolean   @default(false)
-  image           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  isInstanceAdmin Boolean   @default(false)
-  disabledAt      DateTime?
-  sessions        Session[]
-  accounts        Account[]
+  id                   String    @id
+  name                 String
+  email                String
+  emailVerified        Boolean   @default(false)
+  image                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  isInstanceAdmin      Boolean   @default(false)
+  disabledAt           DateTime?
+  /// When the user agreed that AI failure diagnosis sends masked run details to an outside AI service (stage 6
+  /// contract section 8). Null: not agreed, or withdrawn; the next diagnosis asks again.
+  aiDiagnosisConsentAt DateTime?
+  sessions             Session[]
+  accounts             Account[]
 
   memberships            Membership[]
   invitesCreated         Invite[]                @relation("InviteCreatedBy")

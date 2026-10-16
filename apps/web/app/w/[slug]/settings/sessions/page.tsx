@@ -2,6 +2,7 @@ import { listOwnAuthSessions } from "../../../../../lib/auth-sessions";
 import { getDb } from "../../../../../lib/db";
 import { canInWorkspace, requireWorkspace } from "../../../../../lib/page";
 import { AiConnection } from "./ai-connection";
+import { AiDiagnosisConsent } from "./ai-diagnosis-consent";
 import { AuthSessionsView, type SessionRow } from "./sessions-view";
 
 /** The caller's own login sessions, one row per environment that needs one (stage 4 contract section 5). */
@@ -18,6 +19,7 @@ export default async function AuthSessionsPage({ params }: { params: Promise<{ s
   return (
     <>
       <AiConnection />
+      <AiDiagnosisConsent />
       <AuthSessionsView slug={slug} rows={rows} canWrite={canWrite} />
     </>
   );
