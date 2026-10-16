@@ -13,3 +13,4 @@ export * from "./cron.js";
 export * from "./mcp-tools.js";
 export * from "./mcp-socket.js";
 export * from "./redact.js";
+export * from "./structure-diff.js";
