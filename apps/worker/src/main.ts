@@ -1,4 +1,4 @@
-import { assertNotRestoring, createDbClient } from "@defe2end/db";
+import { assertMigrationsMatch, assertNotRestoring, createDbClient } from "@defe2end/db";
 import { loadConfig } from "./config.js";
 import { createWorker } from "./worker.js";
 
@@ -14,6 +14,7 @@ function beat(): void {
 
 try {
   await assertNotRestoring(db);
+  await assertMigrationsMatch(db);
 } catch (err) {
   console.error(`worker cannot start: ${(err as Error).message}`);
   process.exit(1);

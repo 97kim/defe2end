@@ -1,7 +1,7 @@
 {
   "extends": ["//"],
   "tasks": {
-    "generate": { "inputs": ["prisma/schema.prisma"], "outputs": ["src/generated/**"] },
+    "generate": { "inputs": ["prisma/schema.prisma", "prisma/migrations/**", "scripts/known-migrations.mjs"], "outputs": ["src/generated/**"] },
     "build": { "dependsOn": ["^build", "generate"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build", "generate"] },
     "test": { "dependsOn": ["^build", "generate"] }

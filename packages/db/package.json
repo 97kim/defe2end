@@ -16,7 +16,7 @@
     "ops"
   ],
   "scripts": {
-    "generate": "prisma generate",
+    "generate": "prisma generate && node scripts/known-migrations.mjs",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
