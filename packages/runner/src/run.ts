@@ -28,6 +28,7 @@ import {
   type StepResultStatus,
   type StopCause,
   splitSelectorList,
+  type MaskingSettings,
 } from "@defe2end/shared";
 import { captureA11ySnapshot } from "./a11y-snapshot.js";
 import type { Locator, Page, Video } from "playwright";
@@ -35,6 +36,7 @@ import { ACTIONS, autoScroll, classify, scrollPlan, StepFailure, StepWarning, ty
 import { launchBrowser, type RunBrowser } from "./browser.js";
 import { BrowserLog } from "./browser-log.js";
 import { domSummary } from "./dom-summary.js";
+import { captureMasked, DEFAULT_MASKING, forceMask, MASKING_FAILED_MESSAGE, pageMaskScript } from "./masking.js";
 import { hostResolverRules, isBlockedUrl } from "./network.js";
 import { RunSession } from "./session.js";
 
@@ -60,6 +62,8 @@ export interface RunPlanOptions {
   userCanClose?: boolean;
   /** File for an `attachment:<name>` uploadFile token (the worker reads the version pinned in the snapshot); `undefined` fails the step. */
   resolveAttachment?(name: string): Promise<UploadFile | undefined>;
+  /** Stage 7 section 5: the run's masking settings (snapshot or app message). Absent = on, no site selectors. */
+  masking?: MaskingSettings;
 }
 
 /** Not part of the public API: lets tests reach the loopback fixture server while private ranges are blocked. */
@@ -149,7 +153,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     [s.selector, s.url, s.value, s.expected].some((text) => text !== undefined && [...text.matchAll(VARIABLE_KEYS)].some((m) => (Object.hasOwn(plan.variables, m[1]!) && plan.variables[m[1]!]!.secret))),
   );
   // A trace also holds the injected session's cookies, which can't be stripped from it.
-  const recordTrace = plan.capture.traceOnFailure && !usesSecrets && !plan.storageState;
+  // Nor does a run with masking on: the trace's DOM copies can't be masked (stage 7 contract section 5).
+  const masking = opts.masking ?? DEFAULT_MASKING;
+  const recordTrace = plan.capture.traceOnFailure && !usesSecrets && !plan.storageState && !masking.enabled;
   if (plan.capture.video) await log("warn", "Video is on: it can't hide secrets or personal data");
 
   let browser: RunBrowser | undefined;
@@ -193,6 +199,8 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     // so registration is refused in every document as well. Traffic of a worker that got through anyway
     // still meets the resolver rules.
     await context.addInitScript(BLOCK_SERVICE_WORKERS);
+    // Before the first navigation, so every page, popup and frame hides from its first paint on.
+    await context.addInitScript(pageMaskScript(masking));
     if (recordTrace) await context.tracing.start({ screenshots: true, snapshots: true });
     const blockedLog: string[] = [];
     // Every page, frame and popup of the context. Redirect targets never reach this handler; the browser's
@@ -228,17 +236,24 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     }
     let maskPasses = 0;
 
-    /** Masks secret fields; records "not collected" with the reason instead of an unmasked image. */
-    const saveScreenshot = async (name: string, stepIndex: number, extraMask?: string) => {
+    /**
+     * Masks secret fields; records "not collected" with the reason instead of an unmasked image. When the page
+     * masking can't be applied, a screenshot step fails and a failure screenshot is skipped (never unmasked).
+     */
+    const saveScreenshot = async (name: string, stepIndex: number, extraMask?: string, forStep = false) => {
       const page = session.active;
       const found = session.unmaskable.has(page) ? { reason: session.unmaskable.get(page)! } : await secretMasks(page);
       if ("reason" in found) {
         await log("warn", `Screenshot "${name}" not collected: ${found.reason}`, stepIndex);
         return;
       }
-      const extra = (extraMask ?? "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean).map((sel) => page.locator(sel));
-      const bytes = await page.screenshot({ mask: [...found.masks, ...extra], animations: "disabled", timeout: 10_000 });
-      await storeBytes("screenshot", mask(name), bytes, stepIndex);
+      const shot = await captureMasked(page, { settings: masking, ...(extraMask ? { stepMask: extraMask } : {}), extra: found.masks });
+      if (!shot.ok) {
+        await log("warn", `Screenshot "${name}" not collected: masking could not be applied (${shot.reason})`, stepIndex);
+        if (forStep) throw new StepFailure(undefined, MASKING_FAILED_MESSAGE);
+        return;
+      }
+      await storeBytes("screenshot", mask(name), shot.png, stepIndex);
     };
 
     /**
@@ -298,9 +313,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     };
 
     /** A screenshot step's picture; a comparison child adds its accessibility snapshot right after. */
-    const saveStepScreenshot = async (name: string, stepIndex: number, extraMask?: string) => {
-      await saveScreenshot(name, stepIndex, extraMask);
-      if (plan.a11ySnapshot) await saveA11ySnapshot(session.active, plan, secrets, extraMask, stepIndex, storeBytes, log);
+    const saveStepScreenshot = async (name: string, stepIndex: number, extraMask?: string, forStep = false) => {
+      await saveScreenshot(name, stepIndex, extraMask, forStep);
+      if (plan.a11ySnapshot) await saveA11ySnapshot(session.active, masking, secrets, extraMask, stepIndex, storeBytes, log);
     };
 
     for (let index = 0; index < plan.steps.length; index++) {
@@ -312,7 +327,11 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       const startedAt = new Date();
       session.currentIndex = index;
       await emit({ type: "stepStarted", index, stepId: step.id, action: step.action, startedAt: startedAt.toISOString() });
-      const outcome = await runStep(step, index, session, plan, opts, saveStepScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, secretMasks);
+      const maskNow = async (page: Page) => {
+        await forceMask(page, masking).catch(() => {});
+        return secretMasks(page);
+      };
+      const outcome = await runStep(step, index, session, plan, opts, saveStepScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, maskNow);
       if (outcome.limit) runError = { code: "artifact_limit", message: outcome.limit.message };
 
       if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError) {
@@ -460,7 +479,7 @@ async function runStep(
   session: RunSession,
   plan: ExecutionPlan,
   opts: RunPlanOptions,
-  saveScreenshot: (name: string, stepIndex: number, extraMask?: string) => Promise<void>,
+  saveScreenshot: (name: string, stepIndex: number, extraMask?: string, forStep?: boolean) => Promise<void>,
   stopReason: () => AbortReason | undefined,
   log: (message: string) => Promise<void>,
   /** Whether a request was blocked during this step (redirect targets only show up this way). */
@@ -507,7 +526,7 @@ async function runStep(
       signal: opts.signal,
       screenshot: async () => {
         await settle(session);
-        await saveScreenshot(step.name || `step-${index + 1}`, index, step.mask);
+        await saveScreenshot(step.name || `step-${index + 1}`, index, step.mask, true);
       },
       maskBeforeInput: async (page) => {
         await maskNow(page).catch(() => {});
@@ -574,15 +593,15 @@ function firstLine(err: unknown): string {
 /** Comparison child: the masked accessibility snapshot right after the screenshot; none when masking fails. */
 async function saveA11ySnapshot(
   page: Page,
-  plan: ExecutionPlan,
+  masking: MaskingSettings,
   secrets: Iterable<string>,
   stepMask: string | undefined,
   index: number,
   store: (kind: ArtifactKind, name: string, bytes: Uint8Array, stepIndex?: number) => Promise<void>,
   log: (level: "info" | "warn" | "error", message: string, stepIndex?: number) => Promise<void>,
 ): Promise<void> {
-  const siteSelectors = (plan as { masking?: { selectors?: string[] } }).masking?.selectors ?? [];
-  const selectors = [...siteSelectors, ...splitSelectorList(stepMask ?? "")];
+  // Same targets as the screenshot: site selectors while the scenario keeps masking on, and the step's mask.
+  const selectors = [...(masking.enabled ? masking.selectors : []), ...splitSelectorList(stepMask ?? "")];
   // `secrets` already holds the session's values.
   const result = await captureA11ySnapshot(page, { selectors, secrets });
   if (!result.ok) {

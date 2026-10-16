@@ -17,6 +17,7 @@ import {
 import {
   ARTIFACT_CONTENT_TYPES,
   DOM_SUMMARY_MAX_BYTES,
+  STEP_LOG_MAX_BYTES,
   can,
   type Role,
   DESKTOP_HEADERS,
@@ -127,15 +128,19 @@ export async function completeRun(principal: DesktopPrincipal, runId: string, bo
   return { status: mismatch ? "error" : judged.status };
 }
 
-/** `step-{n}` for screenshots and DOM summaries, `main`/`popup-N` for video, `trace`, `log`. */
+/** `step-{n}` for screenshots, DOM summaries, accessibility snapshots and a step's log, `main`/`popup-N` for video, `trace`, `log` for the run-wide log. */
 export function parseArtifactKey(kind: string, key: string): { kind: ArtifactKind; stepIndex?: number } | null {
-  if (kind === "screenshot" || kind === "dom_summary") {
+  if (kind === "screenshot" || kind === "dom_summary" || kind === "a11y_snapshot") {
     const m = /^step-(\d{1,4})$/.exec(key);
     return m ? { kind, stepIndex: Number(m[1]) } : null;
   }
   if (kind === "video") return /^(main|popup-\d{1,3})$/.test(key) ? { kind } : null;
   if (kind === "trace") return key === "trace" ? { kind } : null;
-  if (kind === "log") return key === "log" ? { kind } : null;
+  if (kind === "log") {
+    if (key === "log") return { kind };
+    const m = /^step-(\d{1,4})$/.exec(key);
+    return m ? { kind, stepIndex: Number(m[1]) } : null;
+  }
   return null;
 }
 
@@ -154,6 +159,7 @@ export async function putArtifact(principal: DesktopPrincipal, runId: string, pa
   const limit = RUN_LIMITS.runArtifactBytes;
   if (parsed.kind === "screenshot" && length > SCREENSHOT_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
   if (parsed.kind === "dom_summary" && length > DOM_SUMMARY_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
+  if (parsed.kind === "log" && parsed.stepIndex !== undefined && length > STEP_LOG_MAX_BYTES) throw new DesktopHttpError(desktopError(413, "payload_too_large"));
   const key = { kind: parsed.kind, attempt, name: params.key, stepIndex: parsed.stepIndex };
   const owned = { id: run.id, workspaceId: run.workspaceId, claimToken };
   const fits = await artifactFits(getDb(), owned, key, length, limit);

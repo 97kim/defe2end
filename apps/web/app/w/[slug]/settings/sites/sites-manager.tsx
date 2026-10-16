@@ -1,6 +1,6 @@
 "use client";
 
-import { SECRET_MASK } from "@defe2end/shared";
+import { parseMaskSelectorList, SECRET_MASK, splitSelectorList } from "@defe2end/shared";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -28,12 +28,15 @@ interface EnvironmentData {
 interface SiteData {
   id: string;
   name: string;
+  /** Stage 7 section 5: the site's mask selector list as typed. */
+  maskSelectors: string;
   environments: EnvironmentData[];
 }
 
 type DialogState =
   | { kind: "site"; site?: SiteData }
   | { kind: "deleteSite"; site: SiteData }
+  | { kind: "mask"; site: SiteData }
   | { kind: "environment"; site: SiteData; environment?: EnvironmentData }
   | { kind: "deleteEnvironment"; environment: EnvironmentData }
   | { kind: "variable"; variable: VariableData; replaceOnly: boolean }
@@ -84,12 +87,17 @@ export function SitesManager({ slug, sites, canWrite, canWriteMine = false }: { 
             <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
               <div className="min-w-0">
                 <h3 className="truncate text-title-sm">{site.name}</h3>
-                <p className="text-meta text-text-muted">{t("sites.environmentCount", { count: site.environments.length })}</p>
+                <p className="text-meta text-text-muted">
+                  {t("sites.environmentCount", { count: site.environments.length })} · {t("sites.maskSelectorCount", { count: splitSelectorList(site.maskSelectors).length })}
+                </p>
               </div>
               {canWrite && (
                 <div className="flex shrink-0 items-center gap-1">
                   <Button variant="secondary" onClick={() => setDialog({ kind: "environment", site })}>
                     {t("environments.add")}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setDialog({ kind: "mask", site })}>
+                    {t("sites.maskSelectors")}
                   </Button>
                   <Button variant="ghost" onClick={() => setDialog({ kind: "site", site })}>
                     {t("actions.rename")}
@@ -147,6 +155,7 @@ export function SitesManager({ slug, sites, canWrite, canWriteMine = false }: { 
       )}
 
       {dialog?.kind === "site" && <SiteDialog slug={slug} site={dialog.site} onClose={close} />}
+      {dialog?.kind === "mask" && <MaskSelectorsDialog slug={slug} site={dialog.site} onClose={close} />}
       {dialog?.kind === "deleteSite" && (
         <ConfirmDelete
           title={t("sites.deleteSiteTitle", { name: dialog.site.name })}
@@ -246,6 +255,38 @@ function SiteDialog({ slug, site, onClose }: { slug: string; site?: SiteData; on
       <Field label={t("sites.siteName")}>
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("sites.siteNamePlaceholder")} maxLength={100} required autoFocus />
       </Field>
+      {error && <Alert>{error}</Alert>}
+    </Dialog>
+  );
+}
+
+/** Stage 7 section 5: checked here for a quick message; the server checks again on save (400 with the item). */
+function MaskSelectorsDialog({ slug, site, onClose }: { slug: string; site: SiteData; onClose: () => void }) {
+  const t = useTranslations("settings");
+  const [text, setText] = useState(site.maskSelectors);
+  const { pending, error, setError, run } = useSubmit(onClose);
+  const submit = () => {
+    const checked = parseMaskSelectorList(text);
+    if (!checked.ok) {
+      setError(t("sites.maskSelectorsInvalid", { position: checked.position, selector: checked.selector }));
+      return;
+    }
+    void run(`/api/w/${slug}/sites/${site.id}`, "PATCH", { maskSelectors: text });
+  };
+  return (
+    <Dialog open title={t("sites.maskSelectorsTitle", { name: site.name })} onClose={onClose} onSubmit={submit} footer={<DialogFooter onCancel={onClose} submitLabel={t("actions.save")} pending={pending} />}>
+      <Field label={t("sites.maskSelectorsLabel")}>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={6}
+          spellCheck={false}
+          placeholder={".account-name\n[data-private]"}
+          className="w-full resize-y rounded-control border border-border bg-bg-surface px-3 py-2 font-mono text-body focus:border-accent focus:outline-none"
+          autoFocus
+        />
+      </Field>
+      <p className="text-meta text-text-muted">{t("sites.maskSelectorsHelp")}</p>
       {error && <Alert>{error}</Alert>}
     </Dialog>
   );

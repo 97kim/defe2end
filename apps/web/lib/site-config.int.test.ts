@@ -5,6 +5,8 @@ import * as variablesRoute from "../app/api/w/[slug]/environments/[environmentId
 import * as siteEnvironmentsRoute from "../app/api/w/[slug]/sites/[siteId]/environments/route";
 import * as siteRoute from "../app/api/w/[slug]/sites/[siteId]/route";
 import * as sitesRoute from "../app/api/w/[slug]/sites/route";
+import * as scenariosRoute from "../app/api/w/[slug]/scenarios/route";
+import * as scenarioRoute from "../app/api/w/[slug]/scenarios/[id]/route";
 import * as variableRoute from "../app/api/w/[slug]/variables/[variableId]/route";
 import { describeDb, resetDatabase } from "../test/db";
 import { callRoute, sessionHeaders, workspaceWithRoles } from "../test/helpers";
@@ -51,6 +53,32 @@ describeDb("sites, environments and variables", () => {
   }
 
   describe("sites and environments", () => {
+    it("saves mask selectors only when every item is valid CSS (stage 7 section 5)", async () => {
+      const { siteId } = await setup();
+      const bad = await call(siteRoute.PATCH, { method: "PATCH", params: { siteId }, body: { maskSelectors: ".name\n[title=\"a, b\"]\ndiv[" } });
+      expect(bad.status).toBe(400);
+      expect(bad.text).toContain("Mask selector 3");
+      expect((await call(siteRoute.PATCH, { method: "PATCH", params: { siteId }, body: { maskSelectors: ".x" }, as: "VIEWER" })).status).toBe(403);
+      const ok = await call(siteRoute.PATCH, { method: "PATCH", params: { siteId }, body: { maskSelectors: ".name, :is(.a, .b)" } });
+      expect(ok.status).toBe(200);
+      expect(ok.json.maskSelectors).toBe(".name, :is(.a, .b)");
+    });
+
+    it("checks step mask selectors and stores the scenario masking switch", async () => {
+      const { siteId } = await setup();
+      const steps = (mask: string) => [{ id: "s1", action: "screenshot", mask }];
+      const bad = await call(scenariosRoute.POST, { method: "POST", body: { name: "Masked", siteId, steps: steps(".ok, a[") } });
+      expect(bad.status).toBe(400);
+      expect(bad.text).toContain("Step 1 mask selector 2");
+      const created = await call(scenariosRoute.POST, { method: "POST", body: { name: "Masked", siteId, steps: steps(".ok") } });
+      expect(created.status).toBe(201);
+      expect(created.json.maskingEnabled).toBe(true);
+      const off = await call(scenarioRoute.PATCH, { method: "PATCH", params: { id: created.json.id }, body: { updatedAt: created.json.updatedAt, maskingEnabled: false } });
+      expect(off.json.maskingEnabled).toBe(false);
+      const badEdit = await call(scenarioRoute.PATCH, { method: "PATCH", params: { id: created.json.id }, body: { updatedAt: off.json.updatedAt, steps: steps("::before") } });
+      expect(badEdit.status).toBe(400);
+    });
+
     it("creates, lists, renames and deletes", async () => {
       const { siteId, environmentId } = await setup();
       const list = await call(sitesRoute.GET, { as: "VIEWER" });

@@ -65,7 +65,7 @@ export function makePlan(baseUrl: string, steps: Step[], extra: Partial<Executio
 
 export async function execute(
   p: ExecutionPlan,
-  opts: { signal?: AbortSignal; internals?: RunInternals; resolveAttachment?: RunPlanOptions["resolveAttachment"] } = {},
+  opts: { signal?: AbortSignal; internals?: RunInternals; resolveAttachment?: RunPlanOptions["resolveAttachment"]; masking?: RunPlanOptions["masking"] } = {},
 ) {
   const events: RunnerEvent[] = [];
   const { sink, files } = memorySink();
@@ -78,6 +78,7 @@ export async function execute(
       sandbox: SANDBOX,
       onEvent: (e) => void events.push(e),
       resolveAttachment: opts.resolveAttachment,
+      ...(opts.masking ? { masking: opts.masking } : {}),
     },
     opts.internals ?? {},
   );

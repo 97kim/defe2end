@@ -1,5 +1,5 @@
 import { Prisma, type Environment, type Site, type Variable } from "@defe2end/db";
-import { isValidTimeZone, maskSecrets } from "@defe2end/shared";
+import { isValidTimeZone, maskSecrets, parseMaskSelectorList } from "@defe2end/shared";
 import { z } from "zod";
 import { ApiError } from "./api";
 
@@ -20,6 +20,20 @@ export const workspaceUpdateSchema = z
 export const workspaceDeleteSchema = z.object({ confirmName: z.string() });
 
 export const siteInputSchema = z.object({ name });
+/** Site PATCH: the name and/or the masking selector list (stage 7 contract section 5). */
+export const siteUpdateSchema = z
+  .object({ name, maskSelectors: z.string().max(100_000) })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "Nothing to change");
+
+/**
+ * Checks a mask selector list on save: an invalid item refuses the whole save with 400 and its position.
+ * `label` names the list in the message ("Mask selector", "Step 3 mask").
+ */
+export function assertMaskSelectors(text: string, label = "Mask selector"): void {
+  const checked = parseMaskSelectorList(text);
+  if (!checked.ok) throw new ApiError("invalid_request", `${label} ${checked.position} is not a valid CSS selector (${checked.selector}): ${checked.reason}`);
+}
 
 const baseUrl = z
   .string()
@@ -80,7 +94,7 @@ export function variableView(v: Variable, mine?: MyValue): VariableView {
 export const ownPersonalValue = (userId: string) => ({ personalValues: { where: { userId }, select: { value: true, valueEncrypted: true } } }) as const;
 
 export function siteView(s: Site) {
-  return { id: s.id, name: s.name };
+  return { id: s.id, name: s.name, maskSelectors: s.maskSelectors };
 }
 
 export function environmentView(e: Environment) {

@@ -5,7 +5,7 @@ import { audit } from "../../../../../lib/audit";
 import { getDb } from "../../../../../lib/db";
 import { scenarioNameSchema, tagNameSchema } from "../../../../../lib/scenario-helpers";
 import { scenarioSourceOf } from "../../../../../lib/mcp/source";
-import { requireSite, scenarioInclude, setScenarioTags, toDetail, toSummary } from "../../../../../lib/scenarios";
+import { assertStepMasks, requireSite, scenarioInclude, setScenarioTags, toDetail, toSummary } from "../../../../../lib/scenarios";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,7 @@ export const POST = route({ action: "scenario.write", resource: "scenario" }, as
   const { request, workspace, actor } = ctx;
   const body = await readJson(request, createSchema);
   await requireSite(workspace.id, body.siteId);
+  assertStepMasks(body.steps);
   const row = await getDb().$transaction(async (tx) => {
     const created = await tx.scenario.create({
       data: {

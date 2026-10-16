@@ -317,7 +317,7 @@ export class RunExecutor {
     const sink = uploadSink({ api: this.opts.api, runId: message.runId, claimToken: job.claimToken!, onOwnershipLost: () => this.loseOwnership(job, "artifact upload refused") });
     // One setting per run, so every attempt of it looks the same.
     const headless = this.opts.headless?.() ?? false;
-    const plan: ExecutionPlan = { ...message.plan, capture: { video: message.policy.video, traceOnFailure: message.policy.traceOnFailure } };
+    const plan: ExecutionPlan = { ...message.plan, capture: { video: message.policy.video, traceOnFailure: message.policy.traceOnFailure }, ...(message.comparison ? { a11ySnapshot: true } : {}) };
 
     const onEvent = (event: RunnerEvent) => {
       if (job.lost) return;
@@ -343,7 +343,7 @@ export class RunExecutor {
           return this.opts.runPlan({ ...plan, attempt }, {
             headless,
             // Someone at this PC may close the browser window: that is a cancel, not a failure (contract 4.4.1).
-            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal) });
+            userCanClose: true, sink, onEvent, signal, owner: this.opts.ownerMark, sandbox: this.opts.sandbox, ...(this.opts.executablePath ? { executablePath: this.opts.executablePath } : {}), resolveAttachment: (name) => this.attachment(job, name, signal), ...(message.masking ? { masking: message.masking } : {}) });
         },
       });
       ({ stopCause, attemptCount, passedAfterRetry } = retried);

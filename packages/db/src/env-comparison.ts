@@ -73,12 +73,11 @@ export async function createEnvComparison(db: Db, input: CreateComparisonInput, 
     }
     if (reasons.length > 0) throw new ComparisonStartError(reasons);
 
-    const site = await tx.site.findUniqueOrThrow({ where: { id: scenarioRow.siteId }, select: { maskSelectors: true } });
     const conditions = {
       formatVersion: COMPARISON_CONDITIONS_VERSION,
       steps,
       device: leftSpec.snapshot.device,
-      masking: { enabled: scenarioRow.maskingEnabled, selectors: site.maskSelectors, policyVersion: MASKING_POLICY_VERSION },
+      masking: leftSpec.snapshot.masking ?? { enabled: scenarioRow.maskingEnabled, selectors: [], policyVersion: MASKING_POLICY_VERSION },
       useAuthSession,
       tolerance,
       shiftRange: VISUAL_SHIFT_RANGE,

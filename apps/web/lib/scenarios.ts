@@ -2,6 +2,7 @@ import { Prisma } from "@defe2end/db";
 import type { Step } from "@defe2end/shared";
 import { ApiError } from "./api";
 import { getDb } from "./db";
+import { assertMaskSelectors } from "./site-config";
 
 type Db = ReturnType<typeof getDb> | Prisma.TransactionClient;
 
@@ -33,6 +34,8 @@ export interface ScenarioDetail extends ScenarioSummary {
   updatedByName: string | null;
   /** Retry the whole run once after a failure (spec 4.3); null until the server has the setting. */
   retryOnFailure: boolean | null;
+  /** Site selectors and automatic detection on (stage 7 section 5); field and step masks stay on regardless. */
+  maskingEnabled: boolean;
 }
 
 function sortedTags(row: ScenarioRow) {
@@ -59,6 +62,7 @@ export function toDetail(row: ScenarioRow): ScenarioDetail {
     stepFormatVersion: row.stepFormatVersion,
     updatedByName: row.updatedBy?.name ?? null,
     retryOnFailure: RETRY_SETTING_STORED ? ((row as { retryOnFailure?: boolean }).retryOnFailure ?? true) : null,
+    maskingEnabled: row.maskingEnabled,
   };
 }
 
@@ -93,4 +97,9 @@ export async function setScenarioTags(workspaceId: string, scenarioId: string, n
       update: {},
     });
   }
+}
+
+/** Step `mask` lists are checked on save like the site's selectors (stage 7 contract section 5). */
+export function assertStepMasks(steps: readonly Step[]): void {
+  for (const [i, step] of steps.entries()) if (step.mask) assertMaskSelectors(step.mask, `Step ${i + 1} mask selector`);
 }
