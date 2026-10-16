@@ -3,7 +3,7 @@
 // `RunCreateError` with an API error code; the web app turns them into its API errors. The free-disk check is
 // passed in, so each process asks its own storage.
 import { createHash } from "node:crypto";
-import { can, DEFAULT_DEVICE, DESKTOP_TIMINGS, missingCapabilities, RUN_LIMITS, runSnapshotSchema, screenQualityCapabilities, stepsSchema, uploadAttachmentRefs, type RunSnapshot, type RunTrigger, type Step } from "@defe2end/shared";
+import { can, DEFAULT_DEVICE, DESKTOP_TIMINGS, MASKING_POLICY_VERSION, missingCapabilities, RUN_LIMITS, splitSelectorList, runSnapshotSchema, screenQualityCapabilities, stepsSchema, uploadAttachmentRefs, type RunSnapshot, type RunTrigger, type Step } from "@defe2end/shared";
 import type { Prisma } from "./generated/prisma/client.js";
 import { lockWorkspaceRuns } from "./runs.js";
 import { missingPersonalVariables, subjectAuthSession, type ValueSubject } from "./variables.js";
@@ -178,7 +178,7 @@ export async function resolveScenarioRuns(tx: Tx, workspaceId: string, environme
 }
 
 export type EnvironmentRow = { id: string; name: string; baseUrl: string; siteId: string };
-export type ScenarioRow = { id: string; name: string; steps: unknown; stepFormatVersion: number; retryOnFailure: boolean };
+export type ScenarioRow = { id: string; name: string; steps: unknown; stepFormatVersion: number; retryOnFailure: boolean; maskingEnabled?: boolean };
 
 export async function findEnvironment(tx: Tx, workspaceId: string, environmentId: string): Promise<EnvironmentRow> {
   const environment = await tx.environment.findFirst({ where: { id: environmentId, workspaceId } });
@@ -201,7 +201,7 @@ export async function findScenarios(tx: Tx, workspaceId: string, ids: string[], 
 
 export async function scenarioRun(tx: Tx, workspaceId: string, scenario: ScenarioRow, environment: EnvironmentRow): Promise<RunSpec> {
   const steps = stepsSchema.parse(scenario.steps);
-  return { scenarioId: scenario.id, snapshot: await buildSnapshot(tx, workspaceId, { id: scenario.id, name: scenario.name, steps, retryOnFailure: scenario.retryOnFailure }, environment) };
+  return { scenarioId: scenario.id, snapshot: await buildSnapshot(tx, workspaceId, { id: scenario.id, name: scenario.name, steps, retryOnFailure: scenario.retryOnFailure, maskingEnabled: scenario.maskingEnabled ?? true }, environment) };
 }
 
 /**
@@ -211,17 +211,20 @@ export async function scenarioRun(tx: Tx, workspaceId: string, scenario: Scenari
 export async function buildSnapshot(
   tx: Tx,
   workspaceId: string,
-  scenario: { id: string | null; name: string; steps: Step[]; retryOnFailure?: boolean },
+  scenario: { id: string | null; name: string; steps: Step[]; retryOnFailure?: boolean; maskingEnabled?: boolean },
   environment: EnvironmentRow,
 ): Promise<RunSnapshot> {
   const variables = await tx.variable.findMany({ where: { environmentId: environment.id }, select: { key: true }, orderBy: { key: "asc" } });
   const attachments = await pinAttachments(tx, workspaceId, scenario.steps);
+  // Stage 7 section 5: the site's selectors and the scenario switch, fixed now like the steps.
+  const site = await tx.site.findUnique({ where: { id: environment.siteId }, select: { maskSelectors: true } });
   return runSnapshotSchema.parse({
     scenario: { id: scenario.id, name: scenario.name, stepFormatVersion: 1, steps: scenario.steps, retryOnFailure: scenario.retryOnFailure ?? true },
     environment: { id: environment.id, name: environment.name, baseUrl: environment.baseUrl },
     device: DEFAULT_DEVICE,
     variableKeys: variables.map((v) => v.key),
     attachments,
+    masking: { enabled: scenario.maskingEnabled ?? true, selectors: splitSelectorList(site?.maskSelectors ?? ""), policyVersion: MASKING_POLICY_VERSION },
   });
 }
 

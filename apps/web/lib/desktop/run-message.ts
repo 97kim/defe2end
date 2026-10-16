@@ -63,6 +63,7 @@ export async function buildRunMessage(run: DispatchedRun): Promise<DesktopRunMes
     },
     attachments: attachmentRows.map((a) => ({ id: a.id, name: a.name, version: a.version, contentType: a.contentType, sizeBytes: a.sizeBytes })),
     concurrency: group?.mode === "parallel" ? DESKTOP_MAX_CONCURRENCY : 1,
+    ...(snapshot.masking ? { masking: snapshot.masking } : {}),
   };
 }
 

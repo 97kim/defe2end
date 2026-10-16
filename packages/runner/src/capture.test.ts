@@ -8,6 +8,8 @@ const fixtures = useFixtures();
 const open: Step = { id: "open", action: "goto", url: "/actions.html" };
 const failing: Step = { id: "fail", action: "assertText", selector: "#title", expected: "nope", timeout: 300 };
 const MAGENTA = [255, 0, 255];
+// A run with masking on records no trace (stage 7 contract section 5); these cases are about the other rules.
+const MASKING_OFF = { masking: { enabled: false, selectors: [], policyVersion: 1 } };
 
 describe("screenshots", () => {
   it("masks a secret typed into a field inside an iframe", async () => {
@@ -138,22 +140,22 @@ describe("trace", () => {
   const plan = (steps: Step[], variables = {}) => makePlan(fixtures.url, steps, { variables, capture: { video: false, traceOnFailure: true } });
 
   it("is collected for a failed run and not for a passed one", async () => {
-    const failed = await execute(plan([open, failing]));
+    const failed = await execute(plan([open, failing]), MASKING_OFF);
     const trace = failed.files.filter((f) => f.kind === "trace");
     expect(trace).toHaveLength(1);
     expect(trace[0]!.bytes.subarray(0, 2).toString()).toBe("PK");
 
-    const passed = await execute(plan([open]));
+    const passed = await execute(plan([open]), MASKING_OFF);
     expect(passed.files.filter((f) => f.kind === "trace")).toEqual([]);
   });
 
   it("is never collected when a step uses a secret variable, but an unused secret doesn't stop it", async () => {
-    const secret = await execute(plan([open, { id: "f", action: "fill", selector: "#name", value: "{{TOKEN}}" }, failing], { TOKEN: { value: SECRET, secret: true } }));
+    const secret = await execute(plan([open, { id: "f", action: "fill", selector: "#name", value: "{{TOKEN}}" }, failing], { TOKEN: { value: SECRET, secret: true } }), MASKING_OFF);
     expect(secret.verdict.status).toBe("failed");
     expect(secret.files.filter((f) => f.kind === "trace")).toEqual([]);
     expect(JSON.stringify(secret.events)).not.toContain(SECRET);
 
-    const unused = await execute(plan([open, failing], { TOKEN: { value: SECRET, secret: true } }));
+    const unused = await execute(plan([open, failing], { TOKEN: { value: SECRET, secret: true } }), MASKING_OFF);
     expect(unused.files.filter((f) => f.kind === "trace")).toHaveLength(1);
   });
 });

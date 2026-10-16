@@ -3,7 +3,7 @@
 // the contract.
 import { z } from "zod";
 import { NO_STOP, RUN_ERROR_CODES, RUN_TERMINAL_STATUSES, STEP_RESULT_STATUSES, type StopCause } from "./run-status.js";
-import { renderConditionsSchema, VISUAL_VERDICTS } from "./screen-quality.js";
+import { maskingSettingsSchema, renderConditionsSchema, VISUAL_VERDICTS } from "./screen-quality.js";
 import { stepSchema, STEP_FORMAT_VERSION } from "./steps.js";
 
 /** Resource limits (contract section 3). Defaults are estimates until measured; deployments override them by env. */
@@ -123,6 +123,8 @@ export const runSnapshotSchema = z.strictObject({
   variableKeys: z.array(z.string()),
   /** Workspace attachments the uploadFile steps refer to (`attachment:<name>`), pinned to the version current at request time. */
   attachments: z.array(z.strictObject({ name: z.string(), id: z.string(), version: z.number().int().positive() })).default([]),
+  /** Stage 7 section 5: the site's selectors and the scenario switch at request time. Absent (older runs) = on, no selectors. */
+  masking: maskingSettingsSchema.optional(),
 });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 

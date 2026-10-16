@@ -69,7 +69,13 @@
     "siteInUse": "Scenarios use this site. Move or delete them first.",
     "deleteSiteTitle": "Delete {name}?",
     "deleteSiteBody": "Its environments and their variables will be deleted too. This can't be undone.",
-    "deleteSiteConfirm": "Delete site"
+    "deleteSiteConfirm": "Delete site",
+    "maskSelectors": "Screen masking",
+    "maskSelectorsTitle": "Mask selectors for {name}",
+    "maskSelectorsLabel": "CSS selectors of elements to hide",
+    "maskSelectorsHelp": "One per line, or separated by commas. In every scenario of this site they are covered with solid boxes in screenshots and blurred on screen and in videos. Emails, phone, card and resident registration numbers are hidden automatically. Personal data without a fixed shape, such as names and addresses, and text inside canvases or images can't be detected, so list them here.",
+    "maskSelectorsInvalid": "Item {position} ({selector}) is not a valid CSS selector.",
+    "maskSelectorCount": "{count} mask selectors"
   },
   "environments": {
     "add": "Add environment",

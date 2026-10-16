@@ -349,5 +349,10 @@
     "notFoundBody": "It may have been deleted, or the link is wrong.",
     "toTop": "Scroll to top",
     "toBottom": "Scroll to bottom"
+  },
+  "masking": {
+    "label": "Mask the screen (site selectors and detected personal data)",
+    "off": "Screen masking is off. Only password and card fields, step mask areas and secret values are hidden.",
+    "help": "Hides the site's selectors and text shaped like emails, phone, card or resident registration numbers in screenshots. While on, no trace is recorded."
   }
 }
