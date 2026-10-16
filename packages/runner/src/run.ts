@@ -31,6 +31,7 @@ import {
 import type { Locator, Page, Video } from "playwright";
 import { ACTIONS, autoScroll, classify, scrollPlan, StepFailure, StepWarning, type ActionContext, type UploadFile } from "./actions.js";
 import { launchBrowser, type RunBrowser } from "./browser.js";
+import { BrowserLog } from "./browser-log.js";
 import { domSummary } from "./dom-summary.js";
 import { hostResolverRules, isBlockedUrl } from "./network.js";
 import { RunSession } from "./session.js";
@@ -208,7 +209,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     context.on("requestfailed", (request) => {
       if (isBlockedUrl(request.url(), plan.network)) blockedLog.push(request.url());
     });
+    const browserLog = new BrowserLog(secrets);
     const session = new RunSession(context, await context.newPage());
+    browserLog.attach(context, () => session.currentIndex);
     internals.onFirstPage?.(session.mainPage);
     if (opts.userCanClose) {
       watched = { page: session.mainPage, connected: () => running.browser.isConnected() };
@@ -325,6 +328,16 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
         }
       }
       for (const url of blockedLog.splice(0)) await log("warn", `Blocked request to ${url}`, index);
+      // The page's console errors and failed requests of this step, already masked (stage 6 contract section 8).
+      const consoleText = runError ? null : browserLog.take(index);
+      if (consoleText) {
+        try {
+          await storeBytes("log", `step-${index + 1}-console`, new TextEncoder().encode(consoleText), index);
+        } catch (err) {
+          if (err instanceof ArtifactLimitError) runError = { code: "artifact_limit", message: err.message };
+          await log("warn", `Browser log not collected: ${firstLine(err)}`, index);
+        }
+      }
 
       const result: StepOutcome = {
         index,

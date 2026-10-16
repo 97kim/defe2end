@@ -19,7 +19,7 @@
 | 첫 기준 | 기준이 없으면 그 실행의 스크린샷이 기준이 된다(판정 `created`, 승인자 없음, 화면에 "첫 기준으로 저장됨"). 실패한 스크린샷 스텝은 기준을 만들지 않는다 |
 | 기준 교체 | 사람의 **명시적 승인**만. "최근 통과"를 자동 기준으로 삼지 않는다 |
 | 판정 영향 | `changed`·`size_mismatch` 는 스텝 **경고**(실행은 통과로 끝나고 경고 수에 들어간다). 봇 API `failOnWarning` 이면 CI 에서는 실패(단계 5 그대로) |
-| 수치 | 허용치 = 스텝 `threshold`(기본 5%). SSIM 하한 0.95, 픽셀 색 감도 0.05 는 인스턴스 상수. **판정은 반올림 전 원값으로**, 표시만 반올림 |
+| 수치 | 허용치 = 스텝 `threshold`(기본 5%). 이동 탐색 범위 ±2px, 픽셀 색 감도 0.05 는 인스턴스 상수. **판정은 반올림 전 원값으로**, 표시만 반올림 |
 | 승인 권한 | `scenario.write`, 워크스페이스 경계는 모든 경로에서 `can()` |
 | 마스킹 단위 | 사이트 셀렉터 목록 + 시나리오 켜기/끄기(기본 켜짐) + 스크린샷 스텝 `mask`. 환경 단위 구분은 두지 않는다 |
 | 자동 감지 | 기본 켜짐. 이메일·전화번호(국내·국제)·카드번호·주민등록번호 형식 |
@@ -34,10 +34,10 @@
 
 - `VisualBaseline`: `workspaceId`, `scenarioId`, `stepId`, `environmentId`, `device`(기기 이름·뷰포트 정규화 키), `runtime`, `currentVersion`. (시나리오·스텝 ID·환경·기기·실행 환경)으로 유일. 시나리오·환경을 지우면 함께 지운다.
 - `VisualBaselineVersion`: `baselineId`, `version`(1부터), `storageKey`(사본), `width`·`height`, `render`(렌더링 조건 JSON), `source`(`auto`·`approved`), `approvedById?`, `sourceRunId?`·`sourceStepResultId?`(지워지면 비움), `createdAt`. (기준, 버전)으로 유일.
-- `StepResult` 에 더함: `visualVerdict?`(`created`·`match`·`shifted`·`changed`·`size_mismatch`·`skipped`·`incomparable`), `visualDiffPercent?`(원값), `visualSsim?`, `visualBaselineVersionId?`(그 판정에 쓴 버전 — 보존 근거), `render?`(이 캡처의 렌더링 조건).
+- `StepResult` 에 더함: `visualVerdict?`(`created`·`match`·`shifted`·`changed`·`size_mismatch`·`skipped`·`incomparable`), `visualDiffPercent?`(원값), `visualShiftDiffPercent?`(이동 보정 뒤 원값)·`visualShift?`(찾은 이동량 x·y), `visualBaselineVersionId?`(그 판정에 쓴 버전 — 보존 근거), `render?`(이 캡처의 렌더링 조건).
 - `Site.maskSelectors`(문자열, 기본 빈 값), `Scenario.maskingEnabled`(기본 true), 마스킹 정책 버전 상수(`packages/shared`).
-- `EnvComparison`: `workspaceId`, `scenarioId`, `siteId`, `leftEnvironmentId`·`rightEnvironmentId`, 해석된 좌·우 기본 주소, `location`·`deviceId?`, `conditions`(실행 조건 사본: 스텝·기기·차단 주소·마스킹 설정·세션 사용 여부·허용 오차·SSIM 하한·제한값·형식 버전 — **변수 값·세션 내용은 넣지 않는다**), `status`(`running`·`comparing`·`done`·`error`·`cancelled`), `round`, `claimToken?`·`claimExpiresAt?`, `tolerance`, `screenVerdict?`·`structureVerdict?`(`same`·`different`·`incomparable`), `error?`, `createdById`, 시각들.
-- `EnvComparisonStep`: (비교, 스텝 ID, `round`)로 유일, 좌·우 원본 스텝 결과 ID, 화면 판정·차이 비율·SSIM·적용 허용 오차·diff 저장 키, 구조 판정·이동/추가/삭제/변경 수·diff 저장 키, 사유.
+- `EnvComparison`: `workspaceId`, `scenarioId`, `siteId`, `leftEnvironmentId`·`rightEnvironmentId`, 해석된 좌·우 기본 주소, `location`·`deviceId?`, `conditions`(실행 조건 사본: 스텝·기기·차단 주소·마스킹 설정·세션 사용 여부·허용 오차·이동 탐색 범위·제한값·형식 버전 — **변수 값·세션 내용은 넣지 않는다**), `status`(`running`·`comparing`·`done`·`error`·`cancelled`), `round`, `claimToken?`·`claimExpiresAt?`, `tolerance`, `screenVerdict?`·`structureVerdict?`(`same`·`different`·`incomparable`), `error?`, `createdById`, 시각들.
+- `EnvComparisonStep`: (비교, 스텝 ID, `round`)로 유일, 좌·우 원본 스텝 결과 ID, 화면 판정·차이 비율·이동 보정 뒤 차이 비율·찾은 이동량·적용 허용 오차·diff 저장 키, 구조 판정·이동/추가/삭제/변경 수·diff 저장 키, 사유.
 - `EnvComparisonFile`: 비교가 만든 파일(diff 이미지·구조 diff)의 `storageKey`, `comparisonId`, `round`, `claimToken`, 종류. 실행 점유가 끝난 뒤 생기므로 실행 산출물(`Artifact`)이 아니라 이 표에 둔다. 저장 키는 **점유 토큰을 넣어 작업마다 고유**하게 만들고 덮어쓰지 않는다. 결과 행은 유효한 점유를 가진 작업의 파일만 가리킨다.
 - `RunBaselinePin`: (실행, 기준 버전) — 실행이 고정한 기준 버전. 실행이 끝나면 지운다(그 뒤의 보존 근거는 스텝 결과의 `visualBaselineVersionId`). 버전 정리는 이 표에 있는 버전을 지우지 않는다.
 - `StepResult.visualServerVerdict?`: 서버가 다시 비교해 정한 판정(4절 첫 기준 경합). 있으면 앱 판정보다 우선한다.
@@ -47,7 +47,7 @@
 
 ## 3. 비교 엔진 (`packages/shared` — 리드 선행)
 
-- 입력 두 PNG. 순서: 크기가 다르면 `size_mismatch`(차이 100%) → 크기 0 이면 `match` → 픽셀 비교(색 감도 0.05)로 차이 비율(다른 픽셀 / 전체 × 100, **원값**) → **≤ 허용치면 `match`** → 넘으면 SSIM(그레이스케일, 짧은 변 256 기준 축소) → **≥ 0.95 면 `shifted`**, 아니면 `changed`.
+- 입력 두 PNG. 순서: 크기가 다르면 `size_mismatch`(차이 100%) → 크기 0 이면 `match` → 픽셀 비교(색 감도 0.05)로 차이 비율(다른 픽셀 / 전체 × 100, **원값**) → **≤ 허용치면 `match`** → 넘으면 **이동 탐색**: 현재 이미지를 가로·세로 ±2px 안의 각 위치로 옮겨 겹치는 영역의 차이 비율을 다시 재고, 가장 작은 값이 **≤ 허용치면 `shifted`**(찾은 이동량을 남김), 아니면 `changed`. 평균 구조적 유사도(SSIM)는 쓰지 않는다 — 작은 영역의 진짜 변경에는 너그럽고 화면 전체의 1~2px 밀림에는 엄격해서 판정이 거꾸로 갈린다(실측: 800×600 에 200×40 상자를 넣은 변경 0.983, 390×844 의 2px 이동 0.59). 이동 탐색은 큰 이미지에서 축소본으로 후보를 고른 뒤 원본에서 확인하는 식으로 시간을 줄여도 된다(판정은 원본 기준).
 - **diff 이미지**: 시각 회귀는 `shifted`·`changed` 에서 만든다. 환경 비교는 유효한 두 캡처가 있으면 **판정과 무관하게 항상** 만든다(크기가 다르면 두 이미지를 같은 캔버스에 겹쳐 그린다)(plan 7절).
 - 환경 비교 판정: `match`·`shifted` → `same`(허용 오차가 0 이면 `shifted` 와 차이가 0 보다 큰 `match` 도 `different`), `changed`·`size_mismatch` → `different`.
 - 서버·앱이 같은 코드로 판정한다. 큰 이미지에서 이벤트 루프를 오래 막지 않는다(워커 스레드 또는 나눠 계산).
@@ -60,7 +60,7 @@
 - **첫 기준 경합**: 고정 목록에 기준이 없던 키는 판정 `created` 로 올린다(이 경우 고정 목록 검증 대신 "실행을 만들 때 그 키에 기준이 없었음"을 서버가 실행 사본으로 확인). 서버는 기준 행을 만들 때 유일 제약으로 하나만 이기게 하고, 진 쪽은 이긴 기준(버전 1)과 서버에서 다시 비교해 `visualServerVerdict` 에 기록한다(둘 다 `created` 가 되지 않게). **실행 완료 처리(경고 수·최종 판정·알림)는 `visualServerVerdict` 가 있으면 그것을 쓴다** — 앱의 완료 보고가 이 값을 덮지 못한다.
 - **앱 판정**: 서버는 앱의 판정을 받아들이되(같은 사용자의 PC), 판정이 가리키는 기준 버전이 그 실행의 고정 목록에 있고 같은 워크스페이스·키인지 확인한다. 아니면 그 판정은 버리고 `skipped`.
 - 렌더링 조건이 기준 버전과 다르면 `incomparable`(사유: 다른 브라우저 버전·배율·글꼴). 기준을 읽지 못하거나 비교가 예외로 끝나면 `skipped`. 둘 다 실행을 깨뜨리지 않는다.
-- 경고 문구(스텝 오류란): 차이 비율·SSIM 또는 기대 크기, "의도한 변경이면 실행 상세에서 새 기준으로 승인하세요".
+- 경고 문구(스텝 오류란): 차이 비율(이동 보정 뒤 값 포함) 또는 기대 크기, "의도한 변경이면 실행 상세에서 새 기준으로 승인하세요".
 - **승인**: `POST .../runs/{runId}/steps/{stepResultId}/approve-baseline { expectedVersion }`. 스텝 결과 ID 로 정확히 그 시도의 화면을 고른다. 기준 행을 잠그고 현재 버전이 `expectedVersion` 과 같을 때만 새 버전을 만든다(다르면 409 — 그 사이 다른 승인이 있었음). 같은 스텝 결과로 이미 만든 버전이 현재면 그대로 200(다시 눌러도 같음). 거절: 스크린샷 없음 400, 없는 실행·스텝 404, 환경 비교 자식 409, 실패한 스텝 409, 렌더링 조건이 기록되지 않은 결과 409.
 - 결과 화면: 판정 배지(변경·크기 다름 = 경고색, 미세 이동 = 회색, 일치, 건너뜀, 비교 불가 + 사유, 첫 기준), `shifted`·`changed` 는 기준 | 현재 | diff 를 나란히 보이고 승인 버튼. 과거 결과는 그 결과가 쓴 기준 버전을 보인다.
 - 알림: 경고 스텝 수와 실행 링크(이미지는 싣지 않는다).
@@ -92,7 +92,7 @@
 - **구조 판정**: 정규화(개행 형식·줄 끝 공백, 링크 `{origin}`) 뒤 같으면 `same`. 다르면 요소 단위 diff: 같은 요소(역할·이름·주요 속성이 같은 줄)를 짝지어 **순서 이동**, **한쪽에만**, **내용 변경**(같은 위치·역할에서 이름이나 값이 다름)을 센다. 순서만 바뀌어도 `different`.
 - **제한**(초깃값, 실측으로 조정): 스냅샷 256KiB 또는 5,000줄, 캡처 3초, diff 계산 2초·편집 거리 2,000줄(넘으면 diff 없이 "다름"과 사유), 화면에 펼치는 diff 앞 400줄(넘으면 접기·"전체 보기").
 - **전체 판정**(화면·구조 따로): 자식이 실패·취소됐거나 마스킹 실패·**렌더링 조건 불일치**가 하나라도 있으면 `incomparable`(차이가 있어도 — 조건이 온전하지 않은 비교로 "다름"을 단정하지 않는다, 스텝별 결과는 그대로 보인다). 아니면 하나라도 `different` 면 `different`, `incomparable` 스텝이 있으면 `incomparable`, 나머지 `same`.
-- **목록·상세**: 목록은 최신순(기본 50, 최대 100), 필터는 판정·시나리오 이름·사이트·실행 위치·날짜. 상세는 스텝마다 좌 | 우 | diff(확대), 구조 diff(이동·한쪽에만·변경 표시, 긴 diff 접기), 판정·차이·SSIM·판정 설명, 적용한 가림, 양쪽 캡처 시각과 렌더링 조건, 자식 실행 상태. 진행 중에는 새로 고친다.
+- **목록·상세**: 목록은 최신순(기본 50, 최대 100), 필터는 판정·시나리오 이름·사이트·실행 위치·날짜. 상세는 스텝마다 좌 | 우 | diff(확대), 구조 diff(이동·한쪽에만·변경 표시, 긴 diff 접기), 판정·차이(이동 보정 뒤 값·이동량 포함)·판정 설명, 적용한 가림, 양쪽 캡처 시각과 렌더링 조건, 자식 실행 상태. 진행 중에는 새로 고친다.
 - **취소**: 비교가 `running` 일 때만. 한 트랜잭션에서 비교를 `cancelled` 로 바꾸고 양쪽 자식에 취소 요청을 기록한다(실제 중지는 기존 실행 취소 경로). `comparing` 이후에는 취소를 받지 않는다(짧다). 앱 실행 비교는 그 기기 주인만(403).
 - **파일 쓰기**: diff·구조 diff 는 확정 점유를 가진 작업만 쓴다(`EnvComparisonFile`). 실행 산출물 업로드 경로(실행 점유 필요)를 쓰지 않는다.
 - **권한**: 읽기 `run.read`, 시작·다시 비교 `run.create`, 취소 `run.cancel`. 다른 워크스페이스 404. MCP 에는 열지 않는다.
@@ -105,7 +105,7 @@
 
 ## 8. 시험
 
-- 엔진: 크기 다름, 크기 0, 허용치 경계(같으면 일치), 원값 판정(0.004% 차이가 허용치 0 에서 다름), SSIM 경계, 허용 오차 0 엄격, diff 생성 규칙(시각 회귀·환경 비교 각각).
+- 엔진: 크기 다름, 크기 0, 허용치 경계(같으면 일치), 원값 판정(0.004% 차이가 허용치 0 에서 다름), 이동 탐색 경계(±2px 이동은 `shifted`, 3px 는 `changed`, 이동 + 국소 변경은 `changed`), 허용 오차 0 엄격, diff 생성 규칙(시각 회귀·환경 비교 각각).
 - 시각 회귀: 기준 없음 → 생성, 일치, 변경 → 경고(실행 통과), 승인 → 다음 실행 일치, 실행 중 승인 → 그 실행 경고 유지, **동시 첫 기준**(한쪽만 `created`, 다른 쪽은 비교 판정), **동시 승인**(한쪽 409), 다시 승인(같은 결과), 다른 기기·실행 환경·환경 → 다른 기준, 렌더링 조건 다름 → `incomparable`, 스텝 삽입 뒤에도 기준 유지, 실행 정리 뒤에도 기준·과거 결과의 기준 버전 유지, **고아 정리가 기준 사본을 지우지 않음**, 승인 권한(보기 전용 403, 다른 워크스페이스 404), 앱 실행 경로, **기준 내려받기 인증**(다른 기기·끝난 실행·고정 목록 밖 버전 거절), 앱 판정의 버전 위조 → `skipped`.
 - 마스킹: 사이트 셀렉터·자동 감지·스텝 `mask`·입력칸이 스크린샷에서 가려짐(픽셀 확인), 늦게 나타나는 요소, 입력값 변경, 계속 바뀌는 페이지에서 최대 지연, 입력 직전 강제, 시나리오 끄기(입력칸·스텝 mask 는 유지), shadow DOM·같은 출처 iframe·팝업, **저장 때 잘못된 셀렉터 거부**, **가림 실패 → 찍지 않음**, 마스킹 켜진 실행에 trace 없음, 첫 페인트·팝업의 영상 프레임(실기).
 - 환경 비교: 시작 전 검사 각 이유, 구버전 앱 거절, 자식 격리(목록·알림·정리 제외), 확정 경합(한 번만), **확정 중 프로세스 종료 → 점유 만료 후 재점유로 완료**, 다시 비교·허용 오차 변경, **다시 비교·취소 경합**(낡은 점유는 쓰지 못함), 스냅샷 가림·**비밀 값이 든 스냅샷**·실패 → `incomparable`, 요소 단위 diff(이동·한쪽에만·변경), 링크 정규화, 제한 초과, 한쪽 실패 → 전체 `incomparable`, 취소, 권한.

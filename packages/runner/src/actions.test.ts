@@ -54,7 +54,8 @@ describe("actions that pass", () => {
     const { verdict, results, files } = await execute(plan(steps));
     expect(results.filter((r) => r.status !== "passed").map((r) => [r.stepId, r.errorCode, r.errorMessage])).toEqual([]);
     expect(verdict.status).toBe("passed");
-    expect(files.map((f) => [f.kind, f.name])).toEqual([["screenshot", "page"], ["screenshot", "step-31"]]);
+    // The 404 of the last goto is in that step's browser log.
+    expect(files.map((f) => [f.kind, f.name])).toEqual([["screenshot", "page"], ["screenshot", "step-31"], ["log", "step-35-console"]]);
   });
 });
 
