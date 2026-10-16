@@ -472,7 +472,7 @@ async function restoreDatabase(dumpFile, extra) {
 
 /** The image's default command: apply migrations, then record which server version migrated this database. */
 async function migrate() {
-  await run(join(APP_DIR, "node_modules", ".bin", "prisma"), ["migrate", "deploy"]);
+  await run("prisma", ["migrate", "deploy"]);
   const version = await appVersion();
   if (!/^[0-9A-Za-z.+-]+$/.test(version)) fail(`Unexpected version ${version}.`);
   await sql(

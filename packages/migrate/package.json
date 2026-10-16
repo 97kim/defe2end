@@ -1,0 +1,10 @@
+{
+  "name": "@defe2end/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What the migrate image ships: the db package (migrations, backup/restore) and the Prisma CLI, nothing for development.",
+  "dependencies": {
+    "@defe2end/db": "workspace:*",
+    "prisma": "7.10.0"
+  }
+}

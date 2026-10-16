@@ -89,7 +89,7 @@ new up -d --wait postgres
 # Only when this version adds migrations: otherwise the old database already matches.
 FROM_TREE="${UPGRADE_FROM_VERSION:+v$UPGRADE_FROM_VERSION}"
 FROM_TREE="${FROM_TREE:-$UPGRADE_FROM_REF}"
-if [ "$(git ls-tree --name-only "$FROM_TREE:packages/db/prisma/migrations")" != "$(git ls-tree --name-only HEAD:packages/db/prisma/migrations)" ]; then
+if [ "$(git ls-tree --full-tree --name-only "$FROM_TREE" packages/db/prisma/migrations/)" != "$(git ls-tree --full-tree --name-only HEAD packages/db/prisma/migrations/)" ]; then
   echo "== this version's web refuses the old database until migrate ran"
   if new run --rm --no-deps -T web > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
   grep -q "Run this version's migrate first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
