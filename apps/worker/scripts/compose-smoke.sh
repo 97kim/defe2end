@@ -17,7 +17,7 @@ POSTGRES_PASSWORD=smoke-$(od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
 BETTER_AUTH_SECRET=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 DEFE2END_ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
 ENV
-compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f docker-compose.yml "$@"; }
+compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f docker-compose.build.yml "$@"; }
 cleanup() { compose down -v --rmi local >/dev/null 2>&1 || true; rm -f "$ENV_FILE"; rmdir "$LOCK" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
 

@@ -1,5 +1,8 @@
-# defE2End example deployment: postgres -> migrate (one-shot) -> web + worker.
-# Usage: cp .env.example .env  (set the required secrets), then `docker compose up -d --build`.
+# defE2End deployment from the published images: postgres -> migrate (one-shot) -> web + worker.
+# Usage: cp .env.example .env  (set DEFE2END_VERSION and the required secrets), then `docker compose up -d`.
+# Images are pinned to DEFE2END_VERSION (there is no `latest` tag); to upgrade, change it and run `up -d` again.
+# Building from source instead (development, CI): docker-compose.build.yml. A fork publishing its own images
+# changes the image names below.
 # On first start the web log prints a one-time setup link: `docker compose logs web`.
 # Works with Docker Compose v2.3+.
 
@@ -27,9 +30,7 @@ services:
       retries: 10
 
   migrate:
-    build:
-      context: ..
-      dockerfile: packages/db/Dockerfile
+    image: ghcr.io/97kim/defe2end-migrate:${DEFE2END_VERSION:?set DEFE2END_VERSION in .env}
     environment:
       <<: *database-url
     depends_on:
@@ -37,9 +38,7 @@ services:
         condition: service_healthy
 
   web:
-    build:
-      context: ..
-      dockerfile: apps/web/Dockerfile
+    image: ghcr.io/97kim/defe2end-web:${DEFE2END_VERSION:?set DEFE2END_VERSION in .env}
     restart: unless-stopped
     environment:
       <<: [*database-url, *storage-dir]
@@ -64,9 +63,7 @@ services:
         condition: service_completed_successfully
 
   worker:
-    build:
-      context: ..
-      dockerfile: apps/worker/Dockerfile
+    image: ghcr.io/97kim/defe2end-worker:${DEFE2END_VERSION:?set DEFE2END_VERSION in .env}
     restart: unless-stopped
     # The image runs tini as PID 1: when the worker dies its browsers go with the container.
     # Chromium's sandbox stays on; it needs user namespaces, which Docker's default seccomp profile refuses to a

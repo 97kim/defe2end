@@ -1,0 +1,113 @@
+# defE2End built from this checkout (development, CI): postgres -> migrate (one-shot) -> web + worker.
+# Usage: cp .env.example .env  (set the required secrets), then `docker compose -f docker-compose.build.yml up -d --build`.
+# Same services and settings as docker-compose.yml, which runs the published images instead; keep the two in step
+# (apps/worker/src/compose-env.test.ts compares them).
+# On first start the web log prints a one-time setup link: `docker compose -f docker-compose.build.yml logs web`.
+# Works with Docker Compose v2.3+.
+
+x-database-url: &database-url
+  DATABASE_URL: postgresql://${POSTGRES_USER:-defe2end}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-defe2end}
+
+# Screenshots and other run files: written by the worker, served by web.
+x-storage-dir: &storage-dir
+  STORAGE_DIR: /data/storage
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-defe2end}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-defe2end}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: packages/db/Dockerfile
+    environment:
+      <<: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: [*database-url, *storage-dir]
+      # Back this key up with the database: secrets stored with it can't be read without it.
+      DEFE2END_ENCRYPTION_KEY: ${DEFE2END_ENCRYPTION_KEY:?set DEFE2END_ENCRYPTION_KEY in .env}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - run-files:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    # The image runs tini as PID 1: when the worker dies its browsers go with the container.
+    # Chromium's sandbox stays on; it needs user namespaces, which Docker's default seccomp profile refuses to a
+    # non-root user. This profile is Docker's default plus clone/unshare/setns. Check: `docker compose exec worker
+    # node dist/sandbox-check.js`.
+    security_opt:
+      - seccomp=./chromium-seccomp.json
+    # Longer than SHUTDOWN_GRACE_MS, so runs still going are ended as error(worker_shutdown), not killed mid-write.
+    stop_grace_period: 45s
+    environment:
+      <<: [*database-url, *storage-dir]
+      # The worker decrypts secret variables right before a run.
+      DEFE2END_ENCRYPTION_KEY: ${DEFE2END_ENCRYPTION_KEY:?set DEFE2END_ENCRYPTION_KEY in .env}
+      # Worker settings (see .env.example); defaults match apps/worker/src/config.ts.
+      WORKER_ID: ${WORKER_ID:-}
+      HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-10000}
+      RUN_LEASE_MS: ${RUN_LEASE_MS:-30000}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-1000}
+      CANCEL_POLL_INTERVAL_MS: ${CANCEL_POLL_INTERVAL_MS:-1000}
+      CLAIM_LOCK_TIMEOUT_MS: ${CLAIM_LOCK_TIMEOUT_MS:-3000}
+      MAINTENANCE_INTERVAL_MS: ${MAINTENANCE_INTERVAL_MS:-600000}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-4}
+      WORKSPACE_CONCURRENCY: ${WORKSPACE_CONCURRENCY:-4}
+      RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-900000}
+      RUN_RETRY_ATTEMPTS: ${RUN_RETRY_ATTEMPTS:-2}
+      MIN_FREE_DISK_MB: ${MIN_FREE_DISK_MB:-1024}
+      # Keep below stop_grace_period (45s).
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-30000}
+      BLOCK_PRIVATE_NETWORKS: ${BLOCK_PRIVATE_NETWORKS:-false}
+      CHROMIUM_SANDBOX: ${CHROMIUM_SANDBOX:-true}
+    volumes:
+      - run-files:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  run-files:
