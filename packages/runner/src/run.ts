@@ -415,7 +415,8 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
         durationMs: Date.now() - startedAt.getTime(),
       };
       if (outcome.attempts > 1) result.retried = true;
-      if (opts.visual && step.action === "screenshot" && outcome.status === "passed" && lastCapture && !runError) {
+      // Never in an environment comparison child (contract section 6): it only captures.
+      if (opts.visual && !plan.a11ySnapshot && step.action === "screenshot" && outcome.status === "passed" && lastCapture && !runError) {
         await judgeVisual(opts.visual, step, index, lastCapture, result);
       }
       if (outcome.failure) {

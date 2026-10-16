@@ -14,6 +14,9 @@ files:
   - "!**/node_modules/**/.turbo/**"
   - "!**/node_modules/**/src/**/*.test.*"
   - "!**/node_modules/**/*.map"
+# A worker thread can't read the archive: the image comparison worker stays a plain file (main.ts).
+asarUnpack:
+  - dist/visual-compare-worker.cjs
 # Headless Chromium and ffmpeg for this platform and architecture (scripts/fetch-browsers.mjs).
 extraResources:
   # defe2end-mcp (scripts/bundle-mcp.mjs), run by the app executable with ELECTRON_RUN_AS_NODE=1.
