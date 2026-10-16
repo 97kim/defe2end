@@ -2,7 +2,7 @@ import { ApiError, readJson, route } from "../../../../../../lib/api";
 import { audit } from "../../../../../../lib/audit";
 import { getDb } from "../../../../../../lib/db";
 import { assertNoActiveRuns } from "../../../../../../lib/runs";
-import { environmentView, isForeignKeyViolation, SITE_IN_USE, siteInputSchema, siteView, writeOrConflict } from "../../../../../../lib/site-config";
+import { assertMaskSelectors, environmentView, isForeignKeyViolation, SITE_IN_USE, siteUpdateSchema, siteView, writeOrConflict } from "../../../../../../lib/site-config";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +22,13 @@ export const GET = route<Params>({ action: "workspace.read", resource: "site" },
 
 export const PATCH = route<Params>({ action: "config.write", resource: "site" }, async ({ request, params, workspace, actor }) => {
   const site = await findSite(workspace.id, params.siteId);
-  const { name } = await readJson(request, siteInputSchema);
+  const { name, maskSelectors } = await readJson(request, siteUpdateSchema);
+  if (maskSelectors !== undefined) assertMaskSelectors(maskSelectors);
   const updated = await writeOrConflict("A site with this name already exists", () =>
     getDb().$transaction(async (tx) => {
-      const s = await tx.site.update({ where: { id: site.id }, data: { name } });
-      await audit({ workspaceId: workspace.id, actorId: actor.userId, action: "site.update", targetType: "site", targetId: site.id, meta: { from: site.name, to: name } }, tx);
+      const s = await tx.site.update({ where: { id: site.id }, data: { name, maskSelectors } });
+      const meta = { ...(name !== undefined ? { from: site.name, to: name } : {}), ...(maskSelectors !== undefined ? { maskSelectors: true } : {}) };
+      await audit({ workspaceId: workspace.id, actorId: actor.userId, action: "site.update", targetType: "site", targetId: site.id, meta }, tx);
       return s;
     }),
   );

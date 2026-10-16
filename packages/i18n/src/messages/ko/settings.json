@@ -69,7 +69,13 @@
     "siteInUse": "이 사이트를 쓰는 시나리오가 있어요. 먼저 시나리오를 옮기거나 삭제하세요.",
     "deleteSiteTitle": "{name}을(를) 삭제할까요?",
     "deleteSiteBody": "이 사이트의 환경과 변수도 함께 삭제돼요. 되돌릴 수 없어요.",
-    "deleteSiteConfirm": "사이트 삭제"
+    "deleteSiteConfirm": "사이트 삭제",
+    "maskSelectors": "화면 가림",
+    "maskSelectorsTitle": "{name} 화면 가림 셀렉터",
+    "maskSelectorsLabel": "가릴 요소의 CSS 셀렉터",
+    "maskSelectorsHelp": "한 줄에 하나씩, 또는 쉼표로 나눠 적어요. 이 사이트의 모든 시나리오에서 스크린샷에는 단색 상자로, 화면과 영상에는 블러로 가려요. 이메일·전화번호·카드번호·주민등록번호 형식은 따로 적지 않아도 자동으로 가려요. 이름·주소처럼 형식이 없는 개인정보와 캔버스·이미지 속 글자는 가리지 못하니 여기에 적어 주세요.",
+    "maskSelectorsInvalid": "{position}번째 항목({selector})이 올바른 CSS 셀렉터가 아니에요.",
+    "maskSelectorCount": "가림 셀렉터 {count}개"
   },
   "environments": {
     "add": "환경 추가",
