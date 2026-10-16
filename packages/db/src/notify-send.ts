@@ -292,7 +292,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Report numbers for `[from, to)` of a workspace (test runs excluded). */
 export async function buildReportPayload(tx: Prisma.TransactionClient | Db, workspaceId: string, from: Date, to: Date) {
   const runs = await tx.run.findMany({
-    where: { workspaceId, trigger: { not: "test" }, status: { in: ["passed", "failed", "error", "cancelled", "timed_out"] }, finishedAt: { gte: from, lt: to } },
+    where: { workspaceId, trigger: { not: "test" }, comparisonId: null, status: { in: ["passed", "failed", "error", "cancelled", "timed_out"] }, finishedAt: { gte: from, lt: to } },
     select: { status: true, scenarioId: true, environmentId: true, finishedAt: true, snapshot: true },
     orderBy: [{ finishedAt: "asc" }, { id: "asc" }],
   });
@@ -308,7 +308,7 @@ export async function buildReportPayload(tx: Prisma.TransactionClient | Db, work
   for (const r of latest.values()) {
     if (!FAILING.includes(r.status)) continue;
     const history = await tx.run.findMany({
-      where: { scenarioId: r.scenarioId, environmentId: r.environmentId, trigger: { not: "test" }, status: { in: ["passed", ...FAILING] as never }, finishedAt: { lte: r.finishedAt!, not: null } },
+      where: { scenarioId: r.scenarioId, environmentId: r.environmentId, comparisonId: null, trigger: { not: "test" }, status: { in: ["passed", ...FAILING] as never }, finishedAt: { lte: r.finishedAt!, not: null } },
       orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
       select: { status: true },
       take: 50,

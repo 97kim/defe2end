@@ -11,6 +11,8 @@ import {
   registerDesktopArtifact,
   startDesktopRun,
   type DesktopStepInput,
+  comparisonsOfRuns,
+  finishComparisons,
 } from "@defe2end/db";
 import {
   ARTIFACT_CONTENT_TYPES,
@@ -119,12 +121,16 @@ export async function completeRun(principal: DesktopPrincipal, runId: string, bo
   });
   if (result.result === "finalized") throw new DesktopHttpError(desktopError(409, "run_finalized", { status: result.status }));
   if (result.result === "lease_lost") throw leaseLost();
+  // An environment comparison child: finish its comparison in the background (the worker's sweep catches misses).
+  void comparisonsOfRuns(getDb(), [runId])
+    .then((ids) => finishComparisons(getDb(), getStorage(), ids))
+    .catch((err: Error) => console.error("comparison not finished", err.message));
   return { status: mismatch ? "error" : judged.status };
 }
 
-/** `step-{n}` for screenshots, DOM summaries and a step's log, `main`/`popup-N` for video, `trace`, `log` for the run-wide log. */
+/** `step-{n}` for screenshots, DOM summaries, accessibility snapshots and a step's log, `main`/`popup-N` for video, `trace`, `log` for the run-wide log. */
 export function parseArtifactKey(kind: string, key: string): { kind: ArtifactKind; stepIndex?: number } | null {
-  if (kind === "screenshot" || kind === "dom_summary") {
+  if (kind === "screenshot" || kind === "dom_summary" || kind === "a11y_snapshot") {
     const m = /^step-(\d{1,4})$/.exec(key);
     return m ? { kind, stepIndex: Number(m[1]) } : null;
   }

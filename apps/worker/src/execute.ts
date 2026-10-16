@@ -1,4 +1,4 @@
-import { finishRun, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
+import { comparisonsOfRuns, finishComparisons, finishRun, heartbeat, resolveRunVariables, subjectAuthSession, subjectOfRun, VARIABLE_MISSING_MESSAGE, markVariablesResolved, recordStepResult, startAttempt, type ClaimedRun, type PrismaClient } from "@defe2end/db";
 import { runPlan, runWithRetries, type RunPlanOptions, type UploadFile } from "@defe2end/runner";
 import { ArtifactLimitError, maskSecrets, storageStateSchema, runOptionsSchema, runSnapshotSchema, RUN_LIMITS, type AbortReason, type ArtifactSink, type ExecutionPlan, type RunVerdict } from "@defe2end/shared";
 import { decryptSecret, type StorageDriver } from "@defe2end/shared/server";
@@ -110,6 +110,12 @@ async function execute(deps: ExecuteDeps, claimed: ClaimedRun, claimSentAt: numb
   } catch (err) {
     log(`verdict not stored: ${(err as Error).message}`);
   }
+  // An environment comparison child: try to finish its comparison now (the reaper's sweep catches misses).
+  try {
+    await finishComparisons(db, deps.storage, await comparisonsOfRuns(db, [runId]));
+  } catch (err) {
+    log(`comparison not finished: ${(err as Error).message}`);
+  }
 }
 
 /** One pass over the steps. Step results and artifacts carry the attempt number; the log is one file per attempt. */
@@ -199,8 +205,10 @@ async function buildPlan(deps: ExecuteDeps, claimed: ClaimedRun): Promise<Execut
   if (!resolved.ok) throw new VariableMissingError(resolved.missing);
   const variables: ExecutionPlan["variables"] = resolved.variables;
   const storageState = await requesterSession(deps, claimed);
+  const comparisonChild = (await deps.db.run.findUnique({ where: { id: claimed.id }, select: { comparisonId: true } }))?.comparisonId != null;
   return {
     ...(storageState ? { storageState } : {}),
+    ...(comparisonChild ? { a11ySnapshot: true } : {}),
     runId: claimed.id,
     baseUrl: snapshot.environment.baseUrl,
     steps: snapshot.scenario.steps,

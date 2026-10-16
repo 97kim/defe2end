@@ -81,7 +81,7 @@ export async function enqueueFinishNotifications(tx: Tx, ended: { runIds?: strin
   const base = publicUrl();
   for (const id of new Set(ended.runIds ?? [])) {
     const run = await tx.run.findUnique({ where: { id } });
-    if (!run || !TERMINAL.has(run.status) || run.groupRunId) continue;
+    if (!run || !TERMINAL.has(run.status) || run.groupRunId || run.comparisonId) continue;
     const source = sourceOf(run);
     if (!source || cancelledByPerson(run)) continue;
     const hooks = await tx.slackWebhook.findMany({ where: { workspaceId: run.workspaceId, invalidAt: null }, select: { id: true, notifyOn: true, sources: true } });
@@ -90,7 +90,7 @@ export async function enqueueFinishNotifications(tx: Tx, ended: { runIds?: strin
     const changed = async () => {
       if (!run.scenarioId || !run.environmentId) return true;
       const previous = await tx.run.findFirst({
-        where: { id: { not: run.id }, scenarioId: run.scenarioId, environmentId: run.environmentId, status: { in: ["passed", "failed", "error", "cancelled", "timed_out"] }, finishedAt: { lte: run.finishedAt ?? new Date() } },
+        where: { id: { not: run.id }, comparisonId: null, scenarioId: run.scenarioId, environmentId: run.environmentId, status: { in: ["passed", "failed", "error", "cancelled", "timed_out"] }, finishedAt: { lte: run.finishedAt ?? new Date() } },
         orderBy: [{ finishedAt: "desc" }, { id: "desc" }],
         select: { status: true },
       });

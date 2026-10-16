@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { claimNextRun, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
+import { claimNextRun, finishComparisons, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
 import { RUNNER_VERSION, sweepBrowsers } from "@defe2end/runner";
 import { IDEMPOTENCY } from "@defe2end/shared";
 import { decryptSecret, LocalStorage } from "@defe2end/shared/server";
@@ -45,6 +45,8 @@ export function createWorker(db: PrismaClient, config: WorkerConfig): Worker {
       const ids = await reapExpiredRuns(db);
       for (const id of ids) console.log(`run ${id}: lease expired, ended as error(worker_lost)`);
       await settlePendingGroups(db);
+      // Comparisons whose children ended elsewhere (cancel, reaper, app) or whose claim expired.
+      await finishComparisons(db, storage);
     } catch (err) {
       console.error("reaper failed", (err as Error).message);
     }

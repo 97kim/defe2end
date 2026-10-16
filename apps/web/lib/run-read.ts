@@ -256,6 +256,7 @@ export interface RunList {
 export async function listRuns(workspaceId: string, query: ListRunsQuery): Promise<RunList> {
   const where: Prisma.RunWhereInput = {
     workspaceId,
+    comparisonId: null,
     scenarioId: query.scenarioId,
     environmentId: query.environmentId,
     status: query.status,
@@ -270,7 +271,7 @@ export async function listRuns(workspaceId: string, query: ListRunsQuery): Promi
 
 /** The scenario page's history strip: the latest runs of a scenario, oldest first. */
 export async function scenarioHistory(workspaceId: string, scenarioId: string, take = 24): Promise<RunSummary[]> {
-  const rows = await getDb().run.findMany({ where: { workspaceId, scenarioId }, orderBy: [{ queuedAt: "desc" }, { id: "desc" }], take, select: summarySelect });
+  const rows = await getDb().run.findMany({ where: { workspaceId, scenarioId, comparisonId: null }, orderBy: [{ queuedAt: "desc" }, { id: "desc" }], take, select: summarySelect });
   return rows.map(toSummary).reverse();
 }
 
@@ -316,7 +317,7 @@ export async function getRunChanges(workspaceId: string, runId: string): Promise
   const current = await db.run.findFirst({ where: { id: runId, workspaceId }, select });
   if (!current?.scenarioId || !current.environmentId) return null;
   const passes = await db.run.findMany({
-    where: { workspaceId, scenarioId: current.scenarioId, environmentId: current.environmentId, status: "passed", id: { not: current.id }, queuedAt: { lt: current.queuedAt } },
+    where: { workspaceId, comparisonId: null, scenarioId: current.scenarioId, environmentId: current.environmentId, status: "passed", id: { not: current.id }, queuedAt: { lt: current.queuedAt } },
     orderBy: [{ queuedAt: "desc" }, { id: "desc" }],
     take: RECENT_PASSES,
     select,

@@ -10,6 +10,7 @@ import { browserStore, clearDraft, draftFailureNotice, draftKey } from "../../..
 import type { ScenarioDetail } from "../../../../../lib/scenarios";
 import { ORDER_KEY, type SiteOption } from "../scenarios-view";
 import { StepEditor } from "../step-editor";
+import { StartComparison } from "../../comparisons/comparison-ui";
 import { ScrollButtons } from "./scroll-buttons";
 
 /** Previous / next in the list's last order (filter and search), when this scenario is in it. */
@@ -117,6 +118,11 @@ export function ScenarioDetailView({
         </span>
       </div>
       <section ref={scrollArea} className="min-w-0 flex-1 overflow-y-auto p-6">
+        {canRun && (
+          <div className="mb-4 flex">
+            <StartComparison slug={slug} scenarioId={scenario.id} />
+          </div>
+        )}
         <StepEditor
           key={`${scenario.id}:${scenario.updatedAt}:${editorEpoch}`}
           slug={slug}

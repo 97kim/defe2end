@@ -15,6 +15,7 @@ export function artifactKey(meta: ArtifactMeta): string {
   switch (meta.kind) {
     case "screenshot":
     case "dom_summary":
+    case "a11y_snapshot":
       return `step-${meta.stepIndex ?? 0}`;
     case "video": {
       // The runner names the main page's video "video" (or "video-1" when popups were recorded too).
