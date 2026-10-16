@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { createDecipheriv, createHash, createHmac } from "node:crypto";
 import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
-import { access, constants, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, constants, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { Transform } from "node:stream";
@@ -458,15 +458,19 @@ function isolationSql(withoutKey) {
  * runs it plus `extra` as one transaction (-1) that stops and rolls back at the first error.
  */
 async function restoreDatabase(dumpFile, extra) {
-  const script = join(tmpdir(), `defe2end-restore-${process.pid}.sql`);
+  // A private directory (mkdtemp: 0700, unpredictable name) and a file only this user can read: the script holds
+  // the whole database. Created exclusively first, so pg_restore writes into this file and nothing else.
+  const dir = await mkdtemp(join(tmpdir(), "defe2end-restore-"));
+  const script = join(dir, "restore.sql");
   try {
+    await writeFile(script, "", { flag: "wx", mode: 0o600 });
     await run("pg_restore", ["--no-owner", "--no-acl", "--file", script, dumpFile]);
     await writeFile(script, extra, { flag: "a" });
     await run("psql", ["-X", "-q", "-1", "-v", "ON_ERROR_STOP=1", "-d", libpqUrl(), "-f", script], { capture: true }).catch((err) => {
       throw new UserError(`restoring the database failed and was rolled back; the database is still empty. ${err.message}`);
     });
   } finally {
-    await rm(script, { force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 }
 
