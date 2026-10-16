@@ -127,11 +127,19 @@ describe("app–server version rule (same major, app minor ≥ server minor − 
   });
   it("refuses older minors, older pre-releases and other majors", () => {
     expect(appVersionSupported("1.0.9", "1.2.0")).toBe(false);
-    expect(appVersionSupported("1.1.0-rc.1", "1.2.0")).toBe(false);
     expect(appVersionSupported("1.9.0", "2.0.0")).toBe(false);
     expect(appVersionSupported("2.0.0", "1.2.0")).toBe(false);
   });
-  it("still honours a higher configured minimum", () => {
+  it("ignores pre-release tags in the built-in rule", () => {
+    expect(appVersionSupported("1.0.0-rc.1", "1.0.0-rc.1")).toBe(true);
+    expect(appVersionSupported("1.0.0-rc.1", "1.0.0")).toBe(true);
+    expect(appVersionSupported("1.1.0-rc.1", "1.2.0")).toBe(true);
+    expect(appVersionSupported("1.0.0-rc.3", "1.2.0-rc.1")).toBe(false);
+  });
+  it("applies a configured minimum exactly, pre-release tags included", () => {
     expect(appVersionSupported("1.1.4", "1.2.0", "1.2.0")).toBe(false);
+    expect(appVersionSupported("1.0.0-rc.1", "1.0.0", "1.0.0")).toBe(false);
+    expect(appVersionSupported("1.0.0", "1.0.0", "1.0.0")).toBe(true);
+    expect(appVersionSupported("0.9.0", "0.0.0", "1.0.0")).toBe(false);
   });
 });

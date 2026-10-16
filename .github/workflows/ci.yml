@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Data -> backup (refused while the app runs) -> empty stack -> restore with the same key -> automation
       # paused until resume -> data, files, secret. Also: another key refused, --without-key, half-done restore.
       - run: sh deploy/test/backup-restore.sh
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The previous version is built from its commit until a release exists (UPGRADE_FROM_VERSION).
           fetch-depth: 0
