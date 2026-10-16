@@ -6,6 +6,8 @@
 # architecture. Uses the plain docker builder (`docker build`), which sees the local candidate.
 # Writes <out>/licenses/{sbom.cdx.json,THIRD_PARTY_NOTICES.txt} and <out>/files.txt (the image's file list, for
 # the release clean-room check), and tags the result <tag>.
+# Local trial runs may set IMAGE_LICENSES_KEEP_CACHE=1 to reuse the build cache (never in a release). Needs a
+# builder with the docker driver (BUILDX_BUILDER=<name> picks one).
 # Usage: scripts/image-licenses.sh <web|worker|migrate> <Dockerfile> <out dir> <platform> <tag> [label=value]...
 set -eu
 NAME="$1"; DOCKERFILE="$2"; OUT="$3"; PLATFORM="$4"; TAG="$5"; shift 5
@@ -14,7 +16,9 @@ CANDIDATE="defe2end-$NAME:candidate"
 mkdir -p "$OUT/licenses"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; docker rm -f "defe2end-scan-$NAME" >/dev/null 2>&1 || true' EXIT
 
-docker build --no-cache --pull --platform "$PLATFORM" -t "$CANDIDATE" -f "$DOCKERFILE" .
+fresh="--no-cache --pull"; [ -n "${IMAGE_LICENSES_KEEP_CACHE:-}" ] && fresh="--pull=false"
+# shellcheck disable=SC2086
+docker build $fresh --platform "$PLATFORM" -t "$CANDIDATE" -f "$DOCKERFILE" .
 syft scan "docker:$CANDIDATE" -q -o "cyclonedx-json=$WORK/sbom.json"
 docker create --platform "$PLATFORM" --name "defe2end-scan-$NAME" "$CANDIDATE" >/dev/null
 mkdir "$WORK/root"; docker export "defe2end-scan-$NAME" | tar -x -C "$WORK/root" 2>/dev/null || true

@@ -19,7 +19,9 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const LICENSE_FILE = /^(licen[cs]e|copying|notice|copyright|authors|third[-_]party|licenses?\.chromium)([.\-_].*)?$/i;
+const LICENSE_FILE = /^((licen[cs]e|copying|notice|copyright|authors|third[-_]party|licenses?\.chromium)([.\-_].*)?|(mit|apache|bsd|isc)[-_.]licen[cs]e(\..*)?|unlicen[cs]e(\..*)?)$/i;
+/** Upstream texts for packages that ship none (scripts/licenses/<name, / as __>@<version>.txt, with their source). */
+const UPSTREAM_DIR = fileURLToPath(new URL("licenses/", import.meta.url));
 const SOURCE_OFFER = /\b(A?GPL|LGPL|MPL|EPL|CDDL)\b/i;
 
 export function licenseFiles(dir) {
@@ -107,7 +109,8 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
     // are covered by its own license and NOTICE.
     if (c.type === "file" || c.type === "operating-system" || c.name?.startsWith("@defe2end/")) continue;
     const ids = licenseIds(c);
-    const files = licenseFiles(licenseDir(c, root));
+    let files = licenseFiles(licenseDir(c, root));
+    if (!files.length) files = licenseFiles(join(UPSTREAM_DIR, `${String(c.name).replaceAll("/", "__")}@${c.version}.txt`));
     const refs = files.map((file) => {
       const body = readFileSync(file, "utf8").replace(/\r\n/g, "\n").trim();
       const hash = createHash("sha256").update(body).digest("hex").slice(0, 12);
