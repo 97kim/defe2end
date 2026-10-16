@@ -1,10 +1,10 @@
 // Visual regression through the worker (stage 7 contract sections 4 and 8): real Postgres, fixture pages and
 // Chromium. Runs are queued the way run creation does it, with their baselines pinned in the same transaction.
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { approveBaseline, checkReportedVisualVerdict, pinVisualBaselines, settleCreatedBaseline } from "@defe2end/db";
+import { approveBaseline, checkReportedVisualVerdict, finishRun, pinVisualBaselines, settleCreatedBaseline } from "@defe2end/db";
 import { runSnapshotSchema, type Step } from "@defe2end/shared";
-import { artifactKey, LocalStorage, storageBaselineFiles } from "@defe2end/shared/server";
+import { artifactKey, encodePng, LocalStorage, storageBaselineFiles } from "@defe2end/shared/server";
 import { startFixtureServer, type FixtureServer } from "@defe2end/test-fixtures";
 import { Readable } from "node:stream";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
@@ -123,6 +123,10 @@ describeDb("visual regression", () => {
     const next = await sc.queue();
     expect(await waitForStatus(next, ["passed", "failed", "error"])).toMatchObject({ status: "passed", warningCount: 0 });
     expect(await shotStep(next)).toMatchObject({ status: "passed", visualVerdict: "incomparable", visualBaselineVersionId: v1.id });
+    // A capture under new conditions (a browser update) can replace the baseline like any other.
+    const user = await getDb().user.create({ data: { id: `u${Date.now()}`, email: `b${Date.now()}@x.test`, name: "B" } });
+    const approved = await approveBaseline(getDb(), storageBaselineFiles(storage), { workspaceId: sc.workspaceId, runId: next, stepResultId: (await shotStep(next)).id, expectedVersion: 1, userId: user.id });
+    expect(approved).toMatchObject({ ok: true, version: 2, created: true });
 
     await getDb().$transaction(async (tx) => {
       const pinned = await pinVisualBaselines(tx, { scenarioId: sc.scenarioId, environmentId: sc.environmentId!, location: "server", snapshot: { ...runSnapshotSchema.parse(sc.snapshot), device: { viewport: { width: 800, height: 600 } } } });
@@ -155,7 +159,7 @@ describeDb("visual regression", () => {
     const render = (await getDb().stepResult.findFirstOrThrow({ where: { stepId: "shot" } })).render as object;
     const stepIds: string[] = [];
     for (const runId of racers) {
-      await getDb().run.update({ where: { id: runId }, data: { status: "running" } });
+      await getDb().run.update({ where: { id: runId }, data: { status: "running", claimToken: runId, leaseExpiresAt: new Date(Date.now() + 60_000) } });
       const key = artifactKey(sc.workspaceId, runId, "png");
       await storage.put(key, Readable.from([png]));
       await getDb().artifact.create({ data: { runId, workspaceId: sc.workspaceId, kind: "screenshot", stepIndex: 1, name: "page", storageKey: key, contentType: "image/png", sizeBytes: png.length } });
@@ -163,7 +167,7 @@ describeDb("visual regression", () => {
       stepIds.push(step.id);
     }
     const files = storageBaselineFiles(storage);
-    const verdicts = await Promise.all(stepIds.map((id) => settleCreatedBaseline(getDb(), files, id)));
+    const verdicts = await Promise.all(stepIds.map((id, i) => settleCreatedBaseline(getDb(), files, id, racers[i]!)));
     expect(verdicts.sort()).toEqual(["created", "match"]);
     expect(await getDb().visualBaselineVersion.count()).toBe(1);
     const loser = await getDb().stepResult.findFirstOrThrow({ where: { id: { in: stepIds }, visualServerVerdict: "match" } });
@@ -173,6 +177,47 @@ describeDb("visual regression", () => {
     const forged = await getDb().stepResult.update({ where: { id: loser.id }, data: { visualVerdict: "match", visualServerVerdict: null } });
     expect(await checkReportedVisualVerdict(getDb(), forged.id)).toBe("skipped");
     expect(await getDb().stepResult.findUniqueOrThrow({ where: { id: forged.id } })).toMatchObject({ visualVerdict: "skipped", visualBaselineVersionId: null });
+  }, 120_000);
+
+  it("a first-baseline settlement after its run ended changes nothing; one racing the end is counted or dropped, never half", async () => {
+    const sc = await scenario(shotOf("/login.html"));
+    const render = { browserVersion: "1", deviceScaleFactor: 1, viewport: { width: 1280, height: 720 }, fontSet: "server/test", maskingPolicyVersion: 1 };
+    const solid = (v: number) => Buffer.from(encodePng({ width: 32, height: 24, data: new Uint8Array(32 * 24 * 4).map((_, i) => (i % 4 === 3 ? 255 : v)) }));
+    /** A running run whose screenshot step reported `created`. */
+    const reported = async (shade: number) => {
+      const runId = await sc.queue();
+      await getDb().run.update({ where: { id: runId }, data: { status: "running", claimToken: runId, leaseExpiresAt: new Date(Date.now() + 60_000) } });
+      const key = artifactKey(sc.workspaceId, runId, "png");
+      const png = solid(shade);
+      await storage.put(key, Readable.from([png]));
+      await getDb().artifact.create({ data: { runId, workspaceId: sc.workspaceId, kind: "screenshot", stepIndex: 1, name: "page", storageKey: key, contentType: "image/png", sizeBytes: png.length } });
+      const step = await getDb().stepResult.create({ data: { runId, index: 1, stepId: "shot", action: "screenshot", status: "passed", attempts: 1, startedAt: new Date(), durationMs: 1, visualVerdict: "created", render } });
+      return { runId, stepId: step.id };
+    };
+    const files = storageBaselineFiles(storage);
+    // All queued while the key had no baseline, so each may report `created`.
+    const winner = await reported(10);
+    const late = await reported(200);
+    const racers = [await reported(200), await reported(200), await reported(200), await reported(200)];
+    expect(await settleCreatedBaseline(getDb(), files, winner.stepId, winner.runId)).toBe("created");
+
+    // Ended first: the late settlement writes nothing and leaves no extra baseline file.
+    expect(await finishRun(getDb(), late.runId, late.runId, { status: "passed", warningCount: 0 })).toBe(true);
+    const filesBefore = (await readdir(join(config.storageDir, "workspaces", sc.workspaceId, "baselines"))).length;
+    expect(await settleCreatedBaseline(getDb(), files, late.stepId, late.runId)).toBeNull();
+    expect(await getDb().stepResult.findUniqueOrThrow({ where: { id: late.stepId } })).toMatchObject({ status: "passed", visualServerVerdict: null, visualBaselineVersionId: null });
+    expect(await getDb().run.findUniqueOrThrow({ where: { id: late.runId } })).toMatchObject({ warningCount: 0 });
+    expect((await readdir(join(config.storageDir, "workspaces", sc.workspaceId, "baselines"))).length).toBe(filesBefore);
+
+    // Racing the end: the step verdict and the run's warning count always agree.
+    for (const r of racers) {
+      const [verdict] = await Promise.all([settleCreatedBaseline(getDb(), files, r.stepId, r.runId), finishRun(getDb(), r.runId, r.runId, { status: "passed", warningCount: 0 })]);
+      const step = await getDb().stepResult.findUniqueOrThrow({ where: { id: r.stepId } });
+      const run = await getDb().run.findUniqueOrThrow({ where: { id: r.runId } });
+      if (verdict === "changed") expect([step.status, step.visualServerVerdict, run.warningCount]).toEqual(["warning", "changed", 1]);
+      else expect([verdict, step.status, step.visualServerVerdict, run.warningCount]).toEqual([null, "passed", null, 0]);
+    }
+    expect(await getDb().visualBaselineVersion.count()).toBe(1);
   }, 120_000);
 
   it("an environment comparison child neither judges nor makes baselines", async () => {

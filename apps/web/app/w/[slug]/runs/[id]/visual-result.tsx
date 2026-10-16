@@ -86,7 +86,7 @@ export function VisualDetail({ visual, shot, diff }: { visual: StepVisualView; s
           ))}
         </div>
       )}
-      {side && canApprove && visual.approvable && (
+      {canApprove && visual.approvable && (
         <div className="flex items-center gap-3">
           <Button type="button" onClick={() => void approve()} disabled={state.busy}>
             {state.busy ? t("approving") : t("approve")}
