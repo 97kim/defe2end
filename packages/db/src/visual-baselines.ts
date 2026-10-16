@@ -70,16 +70,17 @@ export async function dropRunBaselinePins(tx: Tx, runId: string): Promise<void> 
 }
 
 /**
- * Warning steps the server's own verdict added (first-baseline race), in the final attempt: the run's
- * warning count uses `visualServerVerdict` over the runner's or app's (section 4).
+ * The run's warning count (section 4): when any step of the final attempt carries a visual verdict, the server
+ * counts the stored `warning` steps itself — they reflect `visualServerVerdict` and app verdicts it turned into
+ * `skipped` — instead of the number the runner or app reported. Otherwise the reported number stands.
  */
-export async function serverVerdictWarnings(tx: Tx, runId: string): Promise<number> {
-  const [row] = await tx.$queryRaw<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM "StepResult"
-    WHERE "runId" = ${runId} AND attempt = (SELECT max(attempt) FROM "StepResult" WHERE "runId" = ${runId})
-      AND "visualServerVerdict" IN ('changed', 'size_mismatch')
-      AND ("visualVerdict" IS NULL OR "visualVerdict" NOT IN ('changed', 'size_mismatch'))`;
-  return row?.n ?? 0;
+export async function finalWarningCount(tx: Tx, runId: string, reported: number): Promise<number> {
+  const [row] = await tx.$queryRaw<{ visual: number; warnings: number }[]>`
+    SELECT count(*) FILTER (WHERE "visualVerdict" IS NOT NULL OR "visualServerVerdict" IS NOT NULL)::int AS visual,
+           count(*) FILTER (WHERE status = 'warning')::int AS warnings
+    FROM "StepResult"
+    WHERE "runId" = ${runId} AND attempt = (SELECT max(attempt) FROM "StepResult" WHERE "runId" = ${runId})`;
+  return row && row.visual > 0 ? row.warnings : reported;
 }
 
 function pngSize(bytes: Uint8Array): { width: number; height: number } | null {

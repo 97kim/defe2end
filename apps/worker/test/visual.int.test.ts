@@ -174,4 +174,19 @@ describeDb("visual regression", () => {
     expect(await checkReportedVisualVerdict(getDb(), forged.id)).toBe("skipped");
     expect(await getDb().stepResult.findUniqueOrThrow({ where: { id: forged.id } })).toMatchObject({ visualVerdict: "skipped", visualBaselineVersionId: null });
   }, 120_000);
+
+  it("an environment comparison child neither judges nor makes baselines", async () => {
+    const sc = await scenario(shotOf("/login.html"));
+    const id = await sc.queue();
+    const site = await getDb().environment.findUniqueOrThrow({ where: { id: sc.environmentId! }, select: { siteId: true } });
+    const comparison = await getDb().envComparison.create({
+      data: { workspaceId: sc.workspaceId, scenarioId: sc.scenarioId!, siteId: site.siteId, leftEnvironmentId: sc.environmentId!, rightEnvironmentId: sc.environmentId!, leftBaseUrl: fixtures.url, rightBaseUrl: fixtures.url, location: "server", conditions: {}, tolerance: 5 },
+    });
+    await getDb().run.update({ where: { id }, data: { comparisonId: comparison.id, comparisonSide: "left" } });
+    await start();
+    expect(await waitForStatus(id, ["passed", "failed", "error"])).toMatchObject({ status: "passed" });
+    expect(await shotStep(id)).toMatchObject({ status: "passed", visualVerdict: null, visualBaselineVersionId: null });
+    expect(await getDb().visualBaseline.count()).toBe(0);
+    expect(await getDb().artifact.count({ where: { runId: id, kind: "visual_diff" } })).toBe(0);
+  }, 120_000);
 });
