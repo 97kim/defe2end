@@ -483,15 +483,31 @@ export async function cancelComparison(db: Db, workspaceId: string, comparisonId
 /**
  * File rows of jobs that lost their claim: not referenced by any stored step result and not held by a live
  * claim. Removing the row leaves the file to the orphan sweep (files are written before their rows, and a
- * stored result only points at files of the claim that committed it).
+ * stored result only points at files of the claim that committed it). Each comparison is re-checked under its
+ * row lock, the lock the commit takes: a commit that holds it past the claim's expiry finishes first, and the
+ * files its result points at stay.
  */
-export async function deleteAbandonedComparisonFiles(db: Db, batch = 500): Promise<number> {
-  return db.$executeRaw`
-    DELETE FROM "EnvComparisonFile" f WHERE f.id IN (
-      SELECT f2.id FROM "EnvComparisonFile" f2 JOIN "EnvComparison" c ON c.id = f2."comparisonId"
-      WHERE NOT (c.status = 'comparing' AND c."claimToken" = f2."claimToken" AND c."claimExpiresAt" > clock_timestamp())
-        AND NOT EXISTS (
-          SELECT 1 FROM "EnvComparisonStep" s
-          WHERE s."comparisonId" = f2."comparisonId" AND (s."screenDiffKey" = f2."storageKey" OR s."structureDiffKey" = f2."storageKey"))
-      LIMIT ${batch}::int)`;
+export async function deleteAbandonedComparisonFiles(db: Db, batch = 100): Promise<number> {
+  const candidates = await db.$queryRaw<{ comparisonId: string }[]>`
+    SELECT DISTINCT f."comparisonId" FROM "EnvComparisonFile" f JOIN "EnvComparison" c ON c.id = f."comparisonId"
+    WHERE NOT (c.status = 'comparing' AND c."claimToken" = f."claimToken" AND c."claimExpiresAt" > clock_timestamp())
+      AND NOT EXISTS (
+        SELECT 1 FROM "EnvComparisonStep" s
+        WHERE s."comparisonId" = f."comparisonId" AND (s."screenDiffKey" = f."storageKey" OR s."structureDiffKey" = f."storageKey"))
+    LIMIT ${batch}::int`;
+  let deleted = 0;
+  for (const { comparisonId } of candidates) {
+    deleted += await db.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "EnvComparison" WHERE id = ${comparisonId} FOR UPDATE`;
+      if (!row) return 0;
+      return tx.$executeRaw`
+        DELETE FROM "EnvComparisonFile" f USING "EnvComparison" c
+        WHERE f."comparisonId" = ${comparisonId} AND c.id = f."comparisonId"
+          AND NOT (c.status = 'comparing' AND c."claimToken" = f."claimToken" AND c."claimExpiresAt" > clock_timestamp())
+          AND NOT EXISTS (
+            SELECT 1 FROM "EnvComparisonStep" s
+            WHERE s."comparisonId" = f."comparisonId" AND (s."screenDiffKey" = f."storageKey" OR s."structureDiffKey" = f."storageKey"))`;
+    });
+  }
+  return deleted;
 }

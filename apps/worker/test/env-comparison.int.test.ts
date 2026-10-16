@@ -4,6 +4,7 @@ import {
   commitComparison,
   ComparisonStartError,
   createEnvComparison,
+  deleteAbandonedComparisonFiles,
   deleteExpiredTestRuns,
   enqueueFinishNotifications,
   finishComparisons,
@@ -215,6 +216,27 @@ describeDb("environment comparison", () => {
     expect(await storage.stat(staleFiles[0]!.storageKey)).toBeNull();
     for (const f of kept) expect(await storage.stat(f.storageKey)).not.toBeNull();
     expect(await getDb().envComparisonFile.count()).toBe(2);
+  });
+
+  it("cleanup waits for a commit that holds the row lock past the claim's expiry, and keeps the files it points at", async () => {
+    const s = await seed();
+    const { comparisonId, runIds } = await start(s);
+    await getDb().run.updateMany({ where: { id: { in: runIds } }, data: { status: "passed", finishedAt: new Date() } });
+    const claim = (await claimComparison(getDb(), comparisonId))!;
+    const key = `workspaces/${s.workspaceId}/comparisons/${comparisonId}/r1-${claim.token}/x-screen.png`;
+    await getDb().envComparisonFile.create({ data: { comparisonId, round: claim.round, claimToken: claim.token, kind: "screen_diff", storageKey: key } });
+    await getDb().$executeRaw`UPDATE "EnvComparison" SET "claimExpiresAt" = clock_timestamp() + interval '200 milliseconds' WHERE id = ${comparisonId}`;
+    let cleanup: Promise<number> | undefined;
+    await getDb().$transaction(async (tx) => {
+      // The commit has locked the row; then its claim runs out before it writes the result.
+      await tx.$queryRaw`SELECT id FROM "EnvComparison" WHERE id = ${comparisonId} FOR UPDATE`;
+      await new Promise((r) => setTimeout(r, 400));
+      cleanup = deleteAbandonedComparisonFiles(getDb());
+      await new Promise((r) => setTimeout(r, 300));
+      await tx.envComparisonStep.create({ data: { comparisonId, stepId: "shot-a", round: claim.round, screenDiffKey: key } });
+    });
+    expect(await cleanup).toBe(0);
+    expect(await getDb().envComparisonFile.count({ where: { storageKey: key } })).toBe(1);
   });
 
   it("compare again and cancel race: a stale claim never writes", async () => {
