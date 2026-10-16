@@ -3,11 +3,16 @@
 // License, notice and copyright files are copied verbatim from where each component sits in the scanned tree:
 // npm packages from their package directory, OS packages from /usr/share/doc/<name>/copyright. Bundled files
 // the scanner can't see as packages (Electron, Chromium, ffmpeg) come in with --extra and are added to the SBOM
-// too. Components under licenses that oblige the distributor to offer source (GPL, LGPL, MPL, EPL) are listed
-// in their own section.
+// too. Components under licenses that oblige the distributor to make source available (GPL, LGPL, MPL, EPL)
+// are listed with where their original source is: the base distribution's source package and exact version
+// for OS packages, the package's source archive or repository and version for npm and Go, the given address
+// for bundled files.
+// A component without any license text fails the run, unless scripts/license-exceptions.json lists it (name,
+// optional version prefix, and the reason it was reviewed and accepted).
 //
 //   node scripts/third-party-notices.mjs --sbom sbom.cdx.json --root <scanned dir> --out NOTICES.txt \
-//     [--sbom-out merged.cdx.json] [--extra "name@version=license-id=path"]... [--title "defE2End web image"]
+//     [--sbom-out merged.cdx.json] [--extra "name@version=license-id=path=source-url"]... [--title "..."]
+//     [--exceptions scripts/license-exceptions.json]
 // <path> of an --extra is a license file or a directory whose license-like files are taken (one level deep).
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -27,11 +32,34 @@ export function licenseFiles(dir) {
   return out;
 }
 
-/** "a@1=MIT=/x" → { name: "a", version: "1", license: "MIT", path: "/x" } (a scoped name keeps its @). */
+/** "a@1=MIT=/x=https://src" → { name: "a", version: "1", license: "MIT", path: "/x", source } (a scoped name keeps its @). */
 export function parseExtra(spec) {
-  const m = /^(@?[^@=]+)@([^=]+)=([^=]+)=(.+)$/.exec(spec);
-  if (!m) throw new Error(`bad --extra ${JSON.stringify(spec)} (expected name@version=license=path)`);
-  return { name: m[1], version: m[2], license: m[3], path: m[4] };
+  const m = /^(@?[^@=]+)@([^=]+)=([^=]+)=([^=]+)=(https:\/\/\S+)$/.exec(spec);
+  if (!m) throw new Error(`bad --extra ${JSON.stringify(spec)} (expected name@version=license=path=https-source-url)`);
+  return { name: m[1], version: m[2], license: m[3], path: m[4], source: m[5] };
+}
+
+/** Where the original source of a component is, from its SBOM entry. */
+export function sourceLocation(component, distro) {
+  if (component._source) return `${component._source} (version ${component.version})`;
+  const purl = component.purl ?? "";
+  if (purl.startsWith("pkg:deb/")) {
+    const src = property(component, "syft:metadata:source") || component.name;
+    const ver = property(component, "syft:metadata:sourceVersion") || component.version;
+    return `${distro ?? "base distribution"} source package ${src} ${ver}${distro?.startsWith("debian") ? ` — https://sources.debian.org/src/${src}/${ver}/` : ""}`;
+  }
+  const vcs = component.externalReferences?.find((r) => r.type === "vcs" || r.type === "distribution")?.url?.replace(/^git\+/, "");
+  if (purl.startsWith("pkg:npm/")) {
+    const base = component.name.replace(/^@[^/]+\//, "");
+    return `${vcs ? `${vcs} at version ${component.version}; ` : ""}source archive https://registry.npmjs.org/${component.name}/-/${base}-${component.version}.tgz`;
+  }
+  if (purl.startsWith("pkg:golang/")) return `https://${component.name} at ${component.version}`;
+  return vcs ? `${vcs} at ${component.version}` : `unknown — ${component.name} ${component.version}`;
+}
+
+/** Reviewed components without license text: [{ name, version?, reason }]. */
+export function isExcepted(component, exceptions) {
+  return exceptions.some((e) => e.name === component.name && (!e.version || String(component.version ?? "").startsWith(e.version)) && typeof e.reason === "string" && e.reason.trim());
 }
 
 export function licenseIds(component) {
@@ -52,7 +80,9 @@ export function licenseDir(component, root) {
   return undefined;
 }
 
-export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
+export function buildNotices({ sbom, root, extras = [], title = "defE2End", exceptions = [] }) {
+  const os = (sbom.components ?? []).find((c) => c.type === "operating-system");
+  const distro = os ? `${os.name} ${os.version ?? ""}`.trim() : undefined;
   const components = [...(sbom.components ?? [])];
   for (const e of extras) {
     components.push({
@@ -62,6 +92,7 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
       licenses: [{ expression: e.license }],
       properties: [{ name: "defe2end:bundled", value: "true" }],
       _licensePath: e.path,
+      _source: e.source,
     });
   }
   components.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
@@ -83,8 +114,9 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
       if (!texts.has(hash)) texts.set(hash, body);
       return hash;
     });
-    if (!refs.length) missing.push(c);
-    if (ids.some((id) => SOURCE_OFFER.test(id))) sourceOffer.push(c);
+    if (!refs.length && !isExcepted(c, exceptions)) missing.push(c);
+    // Bundled files are listed with their source whatever the license.
+    if (c._source || ids.some((id) => SOURCE_OFFER.test(id))) sourceOffer.push(c);
     entries.push({ c, ids, refs });
   }
 
@@ -100,16 +132,14 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
     "",
   ];
   for (const { c, ids, refs } of entries) lines.push(`${label(c)}  [${ids.join(", ") || "license not declared"}]${refs.length ? `  text: ${refs.join(", ")}` : ""}`);
-  lines.push("", "== Source code offer", "");
+  lines.push("", "== Source code", "");
   if (sourceOffer.length) {
     lines.push(
-      "The components below are under licenses that require their source code to be available. defE2End does",
-      "not modify them. Their source is available from each project's upstream release of the listed version,",
-      "and the defE2End maintainers provide it on request through the project's issue tracker for at least three",
-      "years after this release.",
+      "The components below are under licenses that require their source code to be available, or ship as",
+      "bundled files. They are included unmodified; the corresponding source of each listed version is at:",
       "",
     );
-    for (const c of sourceOffer) lines.push(`${label(c)}  [${licenseIds(c).join(", ")}]`);
+    for (const c of sourceOffer) lines.push(`${label(c)}  [${licenseIds(c).join(", ")}]`, `    ${sourceLocation(c, distro)}`);
   } else lines.push("None.");
   lines.push("", "== License texts", "");
   for (const [hash, body] of texts) lines.push(`---- ${hash}`, "", body, "");
@@ -117,7 +147,7 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End" }) {
 }
 
 export function mergedSbom(sbom, components) {
-  const clean = components.map(({ _licensePath, ...c }) => c);
+  const clean = components.map(({ _licensePath, _source, ...c }) => c);
   return { ...sbom, components: clean };
 }
 
@@ -145,8 +175,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
   }
   const sbom = JSON.parse(readFileSync(a.sbom, "utf8"));
-  const result = buildNotices({ sbom, root: a.root, extras, title: a.title });
+  const exceptionsFile = a.exceptions ?? fileURLToPath(new URL("license-exceptions.json", import.meta.url));
+  const exceptions = existsSync(exceptionsFile) ? JSON.parse(readFileSync(exceptionsFile, "utf8")) : [];
+  const result = buildNotices({ sbom, root: a.root, extras, title: a.title, exceptions });
   writeFileSync(a.out, result.text);
   if (a["sbom-out"]) writeFileSync(a["sbom-out"], `${JSON.stringify(mergedSbom(sbom, result.components), null, 2)}\n`);
-  console.log(`${result.components.length} components, ${result.missing.length} without license text, ${result.sourceOffer.length} with a source offer`);
+  console.log(`${result.components.length} components, ${result.sourceOffer.length} with source to make available`);
+  if (result.missing.length) {
+    console.error(`no license text found for ${result.missing.length} components (review each, then add it with the reason to ${exceptionsFile}):`);
+    for (const c of result.missing) console.error(`  ${c.name} ${c.version ?? ""}  ${c.purl ?? ""}`);
+    process.exit(1);
+  }
 }

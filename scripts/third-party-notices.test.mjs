@@ -30,23 +30,29 @@ test("collects texts verbatim, once per distinct text, and lists source offers",
     components: [
       npm("a", "/app/node_modules/a/package.json", "MIT"),
       npm("b", "/app/node_modules/b/package.json", "MIT"),
-      { name: "libx", version: "2", purl: "pkg:deb/debian/libx@2", licenses: [{ license: { id: "LGPL-2.1-only" } }] },
+      { type: "operating-system", name: "debian", version: "12" },
+      { name: "libx", version: "2", purl: "pkg:deb/debian/libx@2", licenses: [{ license: { id: "LGPL-2.1-only" } }], properties: [{ name: "syft:metadata:source", value: "libx-src" }, { name: "syft:metadata:sourceVersion", value: "2-1" }] },
       npm("c", "/app/node_modules/c/package.json", "ISC"),
     ],
   };
-  const extras = [parseExtra(`bundled@3=BSD-3-Clause=${join(root, "bundle")}`)];
+  const extras = [parseExtra(`bundled@3=BSD-3-Clause=${join(root, "bundle")}=https://example.org/bundled`)];
   const r = buildNotices({ sbom, root, extras, title: "test" });
   assert.equal(r.text.match(/MIT text\nCopyright A/g).length, 1);
   assert.match(r.text, /LGPL text/);
   assert.match(r.text, /bundled text/);
-  assert.match(r.text, /== Source code offer\n[\s\S]*libx 2 {2}\[LGPL-2\.1-only\]/);
+  assert.match(r.text, /== Source code\n[\s\S]*libx 2 {2}\[LGPL-2\.1-only\]\n {4}debian 12 source package libx-src 2-1 — https:\/\/sources\.debian\.org\/src\/libx-src\/2-1\//);
+  assert.match(r.text, /bundled 3 {2}\[BSD-3-Clause\]\n {4}https:\/\/example\.org\/bundled \(version 3\)/);
+  assert.doesNotMatch(r.text, /on request|three years/);
   assert.deepEqual(r.missing.map((c) => c.name), ["c"]);
+  const excepted = buildNotices({ sbom, root, extras, exceptions: [{ name: "c", version: "1.", reason: "reviewed: license in the package README only" }] });
+  assert.deepEqual(excepted.missing, []);
+  assert.equal(buildNotices({ sbom, root, extras, exceptions: [{ name: "c", reason: "" }] }).missing.length, 1);
   const merged = mergedSbom(sbom, r.components);
-  assert.equal(merged.components.length, 5);
+  assert.equal(merged.components.length, 6);
   assert.ok(merged.components.every((c) => !("_licensePath" in c)));
 });
 
 test("parses extras, scoped names included", () => {
-  assert.deepEqual(parseExtra("@s/x@1.2=MIT=/p"), { name: "@s/x", version: "1.2", license: "MIT", path: "/p" });
+  assert.deepEqual(parseExtra("@s/x@1.2=MIT=/p=https://s"), { name: "@s/x", version: "1.2", license: "MIT", path: "/p", source: "https://s" });
   assert.throws(() => parseExtra("x=MIT=/p"), /bad --extra/);
 });

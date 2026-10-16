@@ -20,14 +20,14 @@ syft scan "dir:$WORK/app" -q --select-catalogers "+javascript-package-cataloger"
 # Electron's own license and Chromium's notices, as packaged next to the app.
 electron_dir="$(dirname "$(find "$UNPACKED" -name LICENSE.electron.txt | head -n 1)")"
 electron_version="$(node -p 'require("electron/package.json").version')"
-set -- --extra "electron@$electron_version=MIT AND BSD-3-Clause=$electron_dir"
+set -- --extra "electron@$electron_version=MIT AND BSD-3-Clause=$electron_dir=https://github.com/electron/electron/tree/v$electron_version"
 for dir in browsers/"$TARGET"/chromium-* browsers/"$TARGET"/ffmpeg-*; do
   [ -d "$dir" ] || continue
   base="$(basename "$dir")"; name="${base%-*}"; rev="${base##*-}"
   lic="$(find "$dir" -maxdepth 4 \( -iname 'LICENSE*' -o -iname 'COPYING*' \) | head -n 1)"
-  if [ "$name" = ffmpeg ]; then id="LGPL-2.1-or-later"; else id="BSD-3-Clause"; fi
+  if [ "$name" = ffmpeg ]; then id="LGPL-2.1-or-later"; src="https://git.ffmpeg.org/ffmpeg.git"; else id="BSD-3-Clause"; src="https://chromium.googlesource.com/chromium/src"; fi
   [ -n "$lic" ] || { echo "no license file in $dir" >&2; exit 1; }
-  set -- "$@" --extra "playwright-$name@r$rev=$id=$lic"
+  set -- "$@" --extra "playwright-$name@r$rev=$id=$lic=$src"
 done
 rm -rf licenses; mkdir licenses
 node ../../scripts/third-party-notices.mjs --sbom "$WORK/sbom.json" --root "$WORK/app" \

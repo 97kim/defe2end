@@ -68,17 +68,17 @@ jobs:
     secrets: inherit
 
   images:
-    name: Image (${{ matrix.name }})
+    name: Image (${{ matrix.name }}, ${{ matrix.arch }})
     needs: [prepare, test]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
     strategy:
       fail-fast: true
       matrix:
+        name: [web, worker, migrate]
+        arch: [amd64, arm64]
         include:
           - name: web
             dockerfile: apps/web/Dockerfile
@@ -86,8 +86,14 @@ jobs:
             dockerfile: apps/worker/Dockerfile
           - name: migrate
             dockerfile: packages/db/Dockerfile
+          # Each architecture builds on its own machine: no emulation, and the image scanned is the one pushed.
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      NAME: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -95,49 +101,84 @@ jobs:
           node-version-file: .tool-versions
       - run: node scripts/stamp-version.mjs "$GITHUB_REF_NAME"
       - run: sh scripts/install-syft.sh "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      # SBOM and notices from the amd64 build of the final stage; also writes <Dockerfile>.release.
-      - run: sh scripts/image-licenses.sh ${{ matrix.name }} ${{ matrix.dockerfile }} "out/licenses" linux/amd64
+      # Build once without cache (nothing from other runs, forks included), scan that image, add the notices
+      # layer on top of it.
+      - name: Build, scan and add /licenses/
+        run: |
+          REPO="$IMAGE_PREFIX-$NAME"
+          sh scripts/image-licenses.sh ${{ matrix.name }} ${{ matrix.dockerfile }} out linux/${{ matrix.arch }} \
+            "$REPO:sha-$GITHUB_SHA-${{ matrix.arch }}" \
+            "org.opencontainers.image.title=defe2end-${{ matrix.name }}" \
+            "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            "org.opencontainers.image.version=$VERSION" \
+            "org.opencontainers.image.revision=$GITHUB_SHA" \
+            "org.opencontainers.image.licenses=Apache-2.0"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      # No build cache: nothing from other runs (forks included) goes into a release image.
-      - id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Push and collect release files
+        run: |
+          REPO="$IMAGE_PREFIX-$NAME"
+          docker push "$REPO:sha-$GITHUB_SHA-${{ matrix.arch }}"
+          mkdir -p dist
+          docker inspect --format '{{index .RepoDigests 0}}' "$REPO:sha-$GITHUB_SHA-${{ matrix.arch }}" > "dist/arch-digest-${{ matrix.name }}-${{ matrix.arch }}.txt"
+          cp out/licenses/sbom.cdx.json "dist/defe2end-${{ matrix.name }}-$VERSION-linux-${{ matrix.arch }}.cdx.json"
+          cp out/licenses/THIRD_PARTY_NOTICES.txt "dist/defe2end-${{ matrix.name }}-$VERSION-linux-${{ matrix.arch }}-THIRD_PARTY_NOTICES.txt"
+          cp out/files.txt "dist/files-image-${{ matrix.name }}-${{ matrix.arch }}.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}.release
-          build-contexts: licenses=out/licenses
-          platforms: linux/amd64,linux/arm64
-          push: true
-          no-cache: true
-          tags: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:sha-${{ github.sha }}
-          labels: |
-            org.opencontainers.image.title=defe2end-${{ matrix.name }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ env.VERSION }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=Apache-2.0
+          name: image-${{ matrix.name }}-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  image-index:
+    name: Image index (${{ matrix.name }})
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        name: [web, worker, migrate]
+    env:
+      NAME: ${{ matrix.name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: image-${{ matrix.name }}-*
+          path: parts
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # The two architecture images, unchanged, under one sha-<commit> index.
+      - id: index
+        run: |
+          REPO="$IMAGE_PREFIX-$NAME"
+          mapfile -t parts < <(cat parts/arch-digest-"$NAME"-*.txt)
+          test "${#parts[@]}" -eq 2
+          docker buildx imagetools create --tag "$REPO:sha-$GITHUB_SHA" "${parts[@]}"
+          digest="$(docker buildx imagetools inspect "$REPO:sha-$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          mkdir -p dist
+          echo "$REPO@$digest" > "dist/digest-${{ matrix.name }}.txt"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.index.outputs.digest }}
           push-to-registry: true
-      - name: Collect release files
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          mkdir -p dist
-          echo "$IMAGE_PREFIX-${{ matrix.name }}@$DIGEST" > "dist/digest-${{ matrix.name }}.txt"
-          cp out/licenses/sbom.cdx.json "dist/defe2end-${{ matrix.name }}-$VERSION.cdx.json"
-          cp out/licenses/THIRD_PARTY_NOTICES.txt "dist/defe2end-${{ matrix.name }}-$VERSION-THIRD_PARTY_NOTICES.txt"
-          cp out/licenses.files.txt "dist/files-image-${{ matrix.name }}.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: image-${{ matrix.name }}
+          name: image-index-${{ matrix.name }}
           path: dist/
           if-no-files-found: error
           retention-days: 7
@@ -212,7 +253,7 @@ jobs:
 
   draft:
     name: Draft release
-    needs: [prepare, images, desktop]
+    needs: [prepare, image-index, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -272,6 +313,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      attestations: read
     env:
       VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
@@ -282,23 +324,43 @@ jobs:
         run: |
           test "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = true
           gh release download "v$VERSION" --pattern IMAGE_DIGESTS.txt --dir .
-          test "$(wc -l < IMAGE_DIGESTS.txt)" -eq 3
+          # Exactly the three repositories, each once, each with a sha256 digest, nothing else.
+          expected="$(printf '%s\n' "$IMAGE_PREFIX-migrate" "$IMAGE_PREFIX-web" "$IMAGE_PREFIX-worker")"
+          if ! grep -Eqvx "$IMAGE_PREFIX-(web|worker|migrate)@sha256:[0-9a-f]{64}" IMAGE_DIGESTS.txt && \
+             [ "$(cut -d@ -f1 IMAGE_DIGESTS.txt | LC_ALL=C sort)" = "$expected" ] && \
+             [ "$(cut -d@ -f2 IMAGE_DIGESTS.txt | LC_ALL=C sort -u | wc -l)" -eq 3 ]; then
+            echo "digest list ok"
+          else
+            echo "IMAGE_DIGESTS.txt is not exactly one sha256 digest for each of the three images" >&2; cat IMAGE_DIGESTS.txt >&2; exit 1
+          fi
+      - name: Each digest was built by this repository's release workflow from the tagged commit
+        run: |
+          commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/v$VERSION" --jq .sha)"
+          while read -r ref; do
+            gh attestation verify "oci://$ref" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "refs/tags/v$VERSION" --source-digest "$commit"
+          done < IMAGE_DIGESTS.txt
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      # A version tag already on the expected digest (a rerun after a partial promotion) is fine; on any other
+      # digest the run stops: version tags are never moved.
       - name: Add the version tag to the same digests
         run: |
           while read -r ref; do
-            repo="${ref%@*}"
-            if docker buildx imagetools inspect "$repo:$VERSION" >/dev/null 2>&1; then
-              echo "$repo:$VERSION already exists; version tags are never overwritten" >&2; exit 1
+            repo="${ref%@*}"; want="${ref#*@}"
+            have="$(docker buildx imagetools inspect "$repo:$VERSION" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest || true)"
+            if [ -z "$have" ]; then
+              docker buildx imagetools create --tag "$repo:$VERSION" "$ref"
+            elif [ "$have" = "$want" ]; then
+              echo "$repo:$VERSION already on $want"
+            else
+              echo "$repo:$VERSION already exists on $have, not $want; version tags are never moved" >&2; exit 1
             fi
-          done < IMAGE_DIGESTS.txt
-          while read -r ref; do
-            docker buildx imagetools create --tag "${ref%@*}:$VERSION" "$ref"
           done < IMAGE_DIGESTS.txt
 
   publish:
