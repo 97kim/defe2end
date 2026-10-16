@@ -12,7 +12,7 @@
 //
 //   node scripts/third-party-notices.mjs --sbom sbom.cdx.json --root <scanned dir> --out NOTICES.txt \
 //     [--sbom-out merged.cdx.json] [--extra "name@version=license-id=path=source-url"]... [--title "..."]
-//     [--exceptions scripts/license-exceptions.json] [--texts-root <build-stage tree with the full node_modules>]
+//     [--extra-note "name@version=how it was built"]... [--exceptions scripts/license-exceptions.json] [--texts-root <build-stage tree with the full node_modules>]
 // <path> of an --extra is a license file or a directory whose license-like files are taken (one level deep).
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -43,7 +43,7 @@ export function parseExtra(spec) {
 
 /** Where the original source of a component is, from its SBOM entry. */
 export function sourceLocation(component, distro) {
-  if (component._source) return `${component._source} (version ${component.version})`;
+  if (component._source) return `${component._source} (version ${component.version})${component._note ? `\n    ${component._note}` : ""}`;
   const purl = component.purl ?? "";
   if (purl.startsWith("pkg:deb/")) {
     const src = property(component, "syft:metadata:source") || component.name;
@@ -59,9 +59,22 @@ export function sourceLocation(component, distro) {
   return vcs ? `${vcs} at ${component.version}` : `unknown — ${component.name} ${component.version}`;
 }
 
-/** Reviewed components without license text: [{ name, version?, reason }]. */
-export function isExcepted(component, exceptions) {
-  return exceptions.some((e) => e.name === component.name && (!e.version || String(component.version ?? "").startsWith(e.version)) && typeof e.reason === "string" && e.reason.trim());
+/**
+ * Reviewed components that ship no license text anywhere: [{ name, version, license, holder, reason }]. Matched on
+ * the exact name and version (a package vendored in Next: "bundled in next <Next version>").
+ */
+export function findException(component, exceptions) {
+  return exceptions.find((e) => e.name === component.name && e.version === component.version && e.license && e.holder && typeof e.reason === "string" && e.reason.trim());
+}
+
+/** The SPDX standard text of the declared license (scripts/licenses/spdx/<id>.txt) with the copyright holder filled in. */
+export function standardText(exception, spdxDir = join(UPSTREAM_DIR, "spdx")) {
+  const file = join(spdxDir, `${exception.license}.txt`);
+  if (!existsSync(file)) throw new Error(`no SPDX text for ${exception.license} (${file}) needed by ${exception.name}`);
+  const body = readFileSync(file, "utf8").replace(/^Source: .*\n\n?/, "").trim();
+  const placeholder = /<year> <(copyright holders|owner)>/;
+  const filled = placeholder.test(body) ? body.replace(placeholder, exception.holder) : `Copyright ${exception.holder}\n\n${body}`;
+  return `${exception.name} ${exception.version}: the package carries no license text; its declared ${exception.license} license, standard text:\n\n${filled}`;
 }
 
 export function licenseIds(component) {
@@ -100,7 +113,7 @@ export function displayVersion(component) {
   return m ? `bundled in next ${m[1]}` : component.version;
 }
 
-export function buildNotices({ sbom, root, extras = [], title = "defE2End", exceptions = [], textsRoot }) {
+export function buildNotices({ sbom, root, extras = [], title = "defE2End", exceptions = [], textsRoot, notes = {} }) {
   const os = (sbom.components ?? []).find((c) => c.type === "operating-system");
   const distro = os ? `${os.name} ${os.version ?? ""}`.trim() : undefined;
   const components = [...(sbom.components ?? [])];
@@ -113,6 +126,7 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
       properties: [{ name: "defe2end:bundled", value: "true" }],
       _licensePath: e.path,
       _source: e.source,
+      _note: notes[`${e.name}@${e.version}`],
     });
   }
   components.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
@@ -131,13 +145,15 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
     let files = licenseFiles(licenseDir(c, root));
     if (!files.length) files = licenseFiles(textsRootDir(c, textsRoot));
     if (!files.length) files = licenseFiles(join(UPSTREAM_DIR, `${String(c.name).replaceAll("/", "__")}@${c.version}.txt`));
-    const refs = files.map((file) => {
-      const body = readFileSync(file, "utf8").replace(/\r\n/g, "\n").trim();
+    const bodies = files.map((file) => readFileSync(file, "utf8").replace(/\r\n/g, "\n").trim());
+    const exception = bodies.length ? undefined : findException(c, exceptions);
+    if (exception) bodies.push(standardText(exception));
+    const refs = bodies.map((body) => {
       const hash = createHash("sha256").update(body).digest("hex").slice(0, 12);
       if (!texts.has(hash)) texts.set(hash, body);
       return hash;
     });
-    if (!refs.length && !isExcepted(c, exceptions)) missing.push(c);
+    if (!refs.length) missing.push(c);
     // Bundled files are listed with their source whatever the license.
     if (c._source || ids.some((id) => SOURCE_OFFER.test(id))) sourceOffer.push(c);
     entries.push({ c, ids, refs });
@@ -170,15 +186,16 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
 }
 
 export function mergedSbom(sbom, components) {
-  const clean = components.map(({ _licensePath, _source, ...c }) => c);
+  const clean = components.map(({ _licensePath, _source, _note, ...c }) => c);
   return { ...sbom, components: clean };
 }
 
 function args(argv) {
-  const out = { extra: [] };
+  const out = { extra: [], notes: [] };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, "");
     if (key === "extra") out.extra.push(argv[i + 1]);
+    else if (key === "extra-note") out.notes.push(argv[i + 1]);
     else out[key] = argv[i + 1];
   }
   return out;
@@ -200,7 +217,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const sbom = JSON.parse(readFileSync(a.sbom, "utf8"));
   const exceptionsFile = a.exceptions ?? fileURLToPath(new URL("license-exceptions.json", import.meta.url));
   const exceptions = existsSync(exceptionsFile) ? JSON.parse(readFileSync(exceptionsFile, "utf8")) : [];
-  const result = buildNotices({ sbom, root: a.root, extras, title: a.title, exceptions, textsRoot: a["texts-root"] });
+  const result = buildNotices({ sbom, root: a.root, extras, title: a.title, exceptions, textsRoot: a["texts-root"], notes: Object.fromEntries(a.notes.map((n) => [n.slice(0, n.indexOf("=")), n.slice(n.indexOf("=") + 1)])) });
   writeFileSync(a.out, result.text);
   if (a["sbom-out"]) writeFileSync(a["sbom-out"], `${JSON.stringify(mergedSbom(sbom, result.components), null, 2)}\n`);
   console.log(`${result.components.length} components, ${result.sourceOffer.length} with source to make available`);
