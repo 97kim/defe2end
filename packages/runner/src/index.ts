@@ -8,3 +8,4 @@ export { hostResolverRules, isBlockedUrl, type NetworkRules } from "./network.js
 export { runPlan, type RunPlanOptions } from "./run.js";
 export { runWithRetries, type RetriedRun, type RunRetryPolicy, type RunWithRetriesOptions } from "./retry.js";
 export type { UploadFile } from "./actions.js";
+export { collectRenderConditions, detectRuntime, fontSetId, renderConditionDiff, type RenderConditions, type RunRuntime } from "./render-conditions.js";
