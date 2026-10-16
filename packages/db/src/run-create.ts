@@ -3,7 +3,7 @@
 // `RunCreateError` with an API error code; the web app turns them into its API errors. The free-disk check is
 // passed in, so each process asks its own storage.
 import { createHash } from "node:crypto";
-import { can, DEFAULT_DEVICE, DESKTOP_TIMINGS, missingCapabilities, RUN_LIMITS, runSnapshotSchema, stepsSchema, uploadAttachmentRefs, type RunSnapshot, type RunTrigger, type Step } from "@defe2end/shared";
+import { can, DEFAULT_DEVICE, DESKTOP_TIMINGS, missingCapabilities, RUN_LIMITS, runSnapshotSchema, screenQualityCapabilities, stepsSchema, uploadAttachmentRefs, type RunSnapshot, type RunTrigger, type Step } from "@defe2end/shared";
 import type { Prisma } from "./generated/prisma/client.js";
 import { lockWorkspaceRuns } from "./runs.js";
 import { missingPersonalVariables, subjectAuthSession, type ValueSubject } from "./variables.js";
@@ -256,9 +256,9 @@ async function revalidateRequester(tx: Prisma.TransactionClient, actorId: string
 export const DESKTOP_NOT_CONNECTED_MESSAGE = "Your desktop app is not connected. Open it and sign in, then try again.";
 export const AUTH_SESSION_MISSING_MESSAGE = "This environment needs your own login session. Save one first.";
 
-/** Capabilities the device must announce: every step action, plus the features the run uses. */
-export function runCapabilities(input: { steps: { action: string }[]; trigger: RunTrigger; video: boolean; useAuthSession: boolean }): string[] {
-  const needed = new Set<string>(["stop-run"]);
+/** Capabilities the device must announce: every step action, plus the features the run uses (stage 7 section 7 included). */
+export function runCapabilities(input: { steps: { action: string }[]; trigger: RunTrigger; video: boolean; useAuthSession: boolean; comparisonChild?: boolean }): string[] {
+  const needed = new Set<string>(["stop-run", ...screenQualityCapabilities({ steps: input.steps, comparisonChild: input.comparisonChild === true })]);
   for (const step of input.steps) needed.add(step.action);
   if (input.video) needed.add("video");
   if (input.trigger === "test") needed.add("test-run");

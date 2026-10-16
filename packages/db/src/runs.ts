@@ -203,7 +203,7 @@ export async function recordStepResult(db: Db, runId: string, claimToken: string
 
 export interface ArtifactInput {
   workspaceId: string;
-  kind: "screenshot" | "video" | "trace" | "log" | "dom_summary";
+  kind: "screenshot" | "video" | "trace" | "log" | "dom_summary" | "visual_diff" | "a11y_snapshot";
   /** Whole-run attempt, from 1. Defaults to 1. */
   attempt?: number;
   stepIndex?: number;

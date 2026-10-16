@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { claimNextRun, deleteExpiredApiIdempotency, deleteExpiredTestRuns, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
+import { claimNextRun, deleteExpiredApiIdempotency, deleteExpiredTestRuns, deletePrunableBaselineVersions, enqueueDueReports, finishRun, fireDueSchedules, scheduleFireDeps, findUnregisteredKeys, reapExpiredRuns, sendDueNotifications, settlePendingGroups, type PrismaClient } from "@defe2end/db";
 import { RUNNER_VERSION, sweepBrowsers } from "@defe2end/runner";
 import { IDEMPOTENCY } from "@defe2end/shared";
 import { decryptSecret, LocalStorage } from "@defe2end/shared/server";
@@ -56,8 +56,8 @@ export function createWorker(db: PrismaClient, config: WorkerConfig): Worker {
     maintaining = true;
     try {
       const result = await runMaintenance(db, storage, config);
-      if (result.testRuns || result.orphans || result.temp) {
-        console.log(`cleanup: ${result.testRuns} expired test runs, ${result.orphans} unregistered files, ${result.temp} temporary files removed`);
+      if (result.testRuns || result.baselineVersions || result.orphans || result.temp) {
+        console.log(`cleanup: ${result.testRuns} expired test runs, ${result.baselineVersions} old baseline versions, ${result.orphans} unregistered files, ${result.temp} temporary files removed`);
       }
     } catch (err) {
       console.error("cleanup failed", (err as Error).message);
@@ -191,6 +191,13 @@ export async function runMaintenance(db: PrismaClient, storage: LocalStorage, co
     testRuns += runIds.length;
     if (runIds.length === 0) break;
   }
+  let baselineVersions = 0;
+  for (;;) {
+    const { versionIds, storageKeys } = await deletePrunableBaselineVersions(db);
+    for (const key of storageKeys) await storage.delete(key);
+    baselineVersions += versionIds.length;
+    if (versionIds.length === 0) break;
+  }
   let orphans = 0;
   const cutoff = Date.now() - config.orphanAgeMs;
   let batch: string[] = [];
@@ -209,5 +216,5 @@ export async function runMaintenance(db: PrismaClient, storage: LocalStorage, co
   await flush();
   const temp = await storage.cleanupTemp(config.orphanAgeMs);
   await deleteExpiredApiIdempotency(db, IDEMPOTENCY.ttlMs);
-  return { testRuns, orphans, temp };
+  return { testRuns, baselineVersions, orphans, temp };
 }

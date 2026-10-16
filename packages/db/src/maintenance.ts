@@ -54,12 +54,14 @@ export async function deleteExpiredTestRuns(db: Db, keepMs: number, batch = 100)
   });
 }
 
-/** Of these storage keys, the ones no Artifact or Attachment row refers to. */
+/** Of these storage keys, the ones no Artifact, Attachment, baseline version or comparison file row refers to. */
 export async function findUnregisteredKeys(db: Db, keys: string[]): Promise<string[]> {
   if (keys.length === 0) return [];
   const known = await db.$queryRaw<{ storageKey: string }[]>`
     SELECT "storageKey" FROM "Artifact" WHERE "storageKey" = ANY(${keys})
-    UNION SELECT "storageKey" FROM "Attachment" WHERE "storageKey" = ANY(${keys})`;
+    UNION SELECT "storageKey" FROM "Attachment" WHERE "storageKey" = ANY(${keys})
+    UNION SELECT "storageKey" FROM "VisualBaselineVersion" WHERE "storageKey" = ANY(${keys})
+    UNION SELECT "storageKey" FROM "EnvComparisonFile" WHERE "storageKey" = ANY(${keys})`;
   const registered = new Set(known.map((k) => k.storageKey));
   return keys.filter((k) => !registered.has(k));
 }

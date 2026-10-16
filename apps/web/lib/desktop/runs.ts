@@ -33,7 +33,7 @@ import { DesktopHttpError, desktopError, type DesktopPrincipal } from "./auth";
 /** Artifact uploads carry the lease's claim token here (the body is the file). */
 export const CLAIM_TOKEN_HEADER = DESKTOP_HEADERS.claimToken;
 export const SCREENSHOT_MAX_BYTES = 10 * 1024 * 1024;
-const EXTENSIONS: Record<ArtifactKind, string> = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt" };
+const EXTENSIONS: Record<ArtifactKind, string> = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt", visual_diff: "png", a11y_snapshot: "txt" };
 
 export const VERDICT_MISMATCH_MESSAGE = "The app's verdict did not match the step results; the run was stored as an error.";
 

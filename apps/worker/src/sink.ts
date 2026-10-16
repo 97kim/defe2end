@@ -4,7 +4,7 @@ import { registerArtifact, type PrismaClient } from "@defe2end/db";
 import { ARTIFACT_CONTENT_TYPES, ArtifactLimitError, type ArtifactKind, type ArtifactSink } from "@defe2end/shared";
 import { artifactKey, StorageFullError, type StorageDriver } from "@defe2end/shared/server";
 
-const EXTENSIONS: Record<ArtifactKind, string> = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt" };
+const EXTENSIONS: Record<ArtifactKind, string> = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt", visual_diff: "png", a11y_snapshot: "txt" };
 
 /** The volume filled up under a run: collection stops and the run ends `error(artifact_limit)` like an over-limit run. */
 export class StorageFullLimitError extends ArtifactLimitError {

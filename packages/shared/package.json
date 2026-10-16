@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "croner": "^9.1.0",
+    "css-selector-parser": "^3.3.0",
     "zod": "^4.6.5"
   }
 }

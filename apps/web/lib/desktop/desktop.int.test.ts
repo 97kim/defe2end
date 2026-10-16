@@ -98,7 +98,7 @@ describeDb("desktop server", () => {
     await connect(token, { capabilities: ["stop-run"] });
     const missing = await createDesktopRun();
     expect(missing.status).toBe(409);
-    expect((await missing.json()).error).toMatchObject({ code: "app_update_required", missing: ["goto"] });
+    expect((await missing.json()).error).toMatchObject({ code: "app_update_required", missing: ["masking-v1", "goto"] });
     await connect(token);
     expect((await createDesktopRun()).status).toBe(201);
     expect(await claimNextRun(getDb(), { workerId: "w", runnerVersion: "1", leaseMs: 30_000, maxConcurrentRuns: 4, workspaceConcurrency: 4 })).toBeNull();

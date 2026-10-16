@@ -5,7 +5,7 @@ import { getStorage } from "../../../../../../../../lib/storage";
 
 export const dynamic = "force-dynamic";
 
-const EXTENSIONS = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt" } as const;
+const EXTENSIONS = { screenshot: "png", video: "webm", trace: "zip", log: "txt", dom_summary: "txt", visual_diff: "png", a11y_snapshot: "txt" } as const;
 
 /**
  * Serves a run file from the app's origin, so it must never be executable there: fixed content type per kind,
