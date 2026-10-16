@@ -18,7 +18,8 @@ WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"; docker rm -f "defe2end-scan-$NAME" >/
 
 fresh="--no-cache --pull"; [ -n "${IMAGE_LICENSES_KEEP_CACHE:-}" ] && fresh="--pull=false"
 if [ "$NAME" = web ]; then
-  # The web image keeps only the files the server traces, without license texts: they are read from the build
+  # The web image keeps only the files the server traces, without license texts (or READMEs, where some packages
+  # keep theirs): they are read from the build
   # stage, built first (same job, so the candidate below reuses these layers rather than rebuilding them).
   # shellcheck disable=SC2086
   docker build $fresh --platform "$PLATFORM" --target build -t "defe2end-$NAME:build" -f "$DOCKERFILE" .
@@ -35,7 +36,7 @@ TEXTS=""
 if [ "$NAME" = web ]; then
   mkdir "$WORK/texts"
   docker run --rm --platform "$PLATFORM" --entrypoint sh "defe2end-$NAME:build" -c \
-    'cd /repo && find node_modules -type f \( -iname "*licen[cs]e*" -o -iname "copying*" -o -iname "*notice*" \) | tar -cf - -T -' \
+    'cd /repo && find node_modules -type f \( -iname "*licen[cs]e*" -o -iname "copying*" -o -iname "*notice*" -o -iname "readme*" \) | tar -cf - -T -' \
     | tar -x -C "$WORK/texts"
   TEXTS="$WORK/texts"
 fi
