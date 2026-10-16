@@ -15,6 +15,7 @@ import * as runsRoute from "../../app/api/w/[slug]/runs/route";
 import { describeDb, resetDatabase } from "../../test/db";
 import { callRoute, sessionHeaders, workspaceWithRoles } from "../../test/helpers";
 import { getDb } from "../db";
+import { buildRunMessage } from "./run-message";
 import { baselineFiles } from "../visual-compare";
 import { openDesktopStream, type DesktopStreamSession } from "./stream";
 
@@ -168,5 +169,18 @@ describeDb("desktop visual regression", () => {
     const shot = await getDb().stepResult.findFirstOrThrow({ where: { runId: run.id, stepId: "shot" } });
     const result = await approveBaseline(getDb(), baselineFiles(), { workspaceId: ctx.workspace.id, runId: run.id, stepResultId: shot.id, expectedVersion: 1, userId: ctx.users.EDITOR.id });
     expect(result).toMatchObject({ ok: false, status: 409 });
+  });
+
+  it("marks a comparison child in the run message so the app takes the structure snapshot", async () => {
+    const { id } = await createRun();
+    const comparison = await getDb().envComparison.create({
+      data: { workspaceId: ctx.workspace.id, scenarioId: scenario.id, siteId: environment.siteId, leftEnvironmentId: environment.id, rightEnvironmentId: environment.id, leftBaseUrl: "https://a.example.com", rightBaseUrl: "https://b.example.com", location: "desktop", conditions: {}, tolerance: 5, createdById: ctx.users.EDITOR.id },
+    });
+    await getDb().run.update({ where: { id }, data: { comparisonId: comparison.id, comparisonSide: "right" } });
+    const child = await buildRunMessage((await getDb().run.findUniqueOrThrow({ where: { id } })) as never);
+    expect(child.comparison).toEqual({ comparisonId: comparison.id, side: "right" });
+    expect(child.baselines).toBeUndefined();
+    const { id: plain } = await createRun();
+    expect((await buildRunMessage((await getDb().run.findUniqueOrThrow({ where: { id: plain } })) as never)).comparison).toBeUndefined();
   });
 });
