@@ -1,3 +1,4 @@
+import { STEP_LOG_MAX_BYTES } from "@defe2end/shared";
 import { describe, expect, it } from "vitest";
 import { BROWSER_LOG_LINE_CHARS, BROWSER_LOG_STEP_LINES, BrowserLog } from "./browser-log.js";
 import { runPlan } from "./index.js";
@@ -63,6 +64,7 @@ describe("browser log artifacts", () => {
   it("caps a noisy step and notes what was left out", async () => {
     const { byStep } = await run(BROWSER_LOG_STEP_LINES + 10);
     const lines = byStep.get(1)!.trimEnd().split("\n");
+    expect(Buffer.byteLength(byStep.get(1)!)).toBeLessThanOrEqual(STEP_LOG_MAX_BYTES);
     expect(lines).toHaveLength(BROWSER_LOG_STEP_LINES + 1);
     expect(lines.at(-1)).toBe("… 10 more browser log lines omitted");
     expect(Math.max(...lines.map((l) => l.length))).toBeLessThanOrEqual(BROWSER_LOG_LINE_CHARS + 1);

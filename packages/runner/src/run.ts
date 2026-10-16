@@ -28,12 +28,14 @@ import {
   type StepOutcome,
   type StepResultStatus,
   type StopCause,
+  type MaskingSettings,
 } from "@defe2end/shared";
 import type { Locator, Page, Video } from "playwright";
 import { ACTIONS, autoScroll, classify, scrollPlan, StepFailure, StepWarning, type ActionContext, type UploadFile } from "./actions.js";
 import { launchBrowser, type RunBrowser } from "./browser.js";
 import { BrowserLog } from "./browser-log.js";
 import { domSummary } from "./dom-summary.js";
+import { captureMasked, DEFAULT_MASKING, forceMask, MASKING_FAILED_MESSAGE, pageMaskScript } from "./masking.js";
 import { hostResolverRules, isBlockedUrl } from "./network.js";
 import { RunSession } from "./session.js";
 import { collectRenderConditions } from "./render-conditions.js";
@@ -63,6 +65,8 @@ export interface RunPlanOptions {
   resolveAttachment?(name: string): Promise<UploadFile | undefined>;
   /** Stage 7 section 4: judge passed screenshot steps against the pinned baselines. Unset = no visual regression. */
   visual?: VisualRegressionOptions;
+  /** Stage 7 section 5: the run's masking settings (snapshot or app message). Absent = on, no site selectors. */
+  masking?: MaskingSettings;
 }
 
 /** Not part of the public API: lets tests reach the loopback fixture server while private ranges are blocked. */
@@ -152,7 +156,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     [s.selector, s.url, s.value, s.expected].some((text) => text !== undefined && [...text.matchAll(VARIABLE_KEYS)].some((m) => (Object.hasOwn(plan.variables, m[1]!) && plan.variables[m[1]!]!.secret))),
   );
   // A trace also holds the injected session's cookies, which can't be stripped from it.
-  const recordTrace = plan.capture.traceOnFailure && !usesSecrets && !plan.storageState;
+  // Nor does a run with masking on: the trace's DOM copies can't be masked (stage 7 contract section 5).
+  const masking = opts.masking ?? DEFAULT_MASKING;
+  const recordTrace = plan.capture.traceOnFailure && !usesSecrets && !plan.storageState && !masking.enabled;
   if (plan.capture.video) await log("warn", "Video is on: it can't hide secrets or personal data");
 
   let browser: RunBrowser | undefined;
@@ -196,6 +202,8 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     // so registration is refused in every document as well. Traffic of a worker that got through anyway
     // still meets the resolver rules.
     await context.addInitScript(BLOCK_SERVICE_WORKERS);
+    // Before the first navigation, so every page, popup and frame hides from its first paint on.
+    await context.addInitScript(pageMaskScript(masking));
     if (recordTrace) await context.tracing.start({ screenshots: true, snapshots: true });
     const blockedLog: string[] = [];
     // Every page, frame and popup of the context. Redirect targets never reach this handler; the browser's
@@ -231,18 +239,25 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
     }
     let maskPasses = 0;
 
-    /** Masks secret fields; records "not collected" with the reason instead of an unmasked image. */
-    const saveScreenshot = async (name: string, stepIndex: number, extraMask?: string) => {
+    /**
+     * Masks secret fields; records "not collected" with the reason instead of an unmasked image. When the page
+     * masking can't be applied, a screenshot step fails and a failure screenshot is skipped (never unmasked).
+     */
+    const saveScreenshot = async (name: string, stepIndex: number, extraMask?: string, forStep = false) => {
       const page = session.active;
       const found = session.unmaskable.has(page) ? { reason: session.unmaskable.get(page)! } : await secretMasks(page);
       if ("reason" in found) {
         await log("warn", `Screenshot "${name}" not collected: ${found.reason}`, stepIndex);
         return;
       }
-      const extra = (extraMask ?? "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean).map((sel) => page.locator(sel));
-      const bytes = await page.screenshot({ mask: [...found.masks, ...extra], animations: "disabled", timeout: 10_000 });
-      await storeBytes("screenshot", mask(name), bytes, stepIndex);
-      lastCapture = { bytes, page };
+      const shot = await captureMasked(page, { settings: masking, ...(extraMask ? { stepMask: extraMask } : {}), extra: found.masks });
+      if (!shot.ok) {
+        await log("warn", `Screenshot "${name}" not collected: masking could not be applied (${shot.reason})`, stepIndex);
+        if (forStep) throw new StepFailure(undefined, MASKING_FAILED_MESSAGE);
+        return;
+      }
+      await storeBytes("screenshot", mask(name), shot.png, stepIndex);
+      lastCapture = { bytes: shot.png, page };
     };
     /** The latest screenshot of the step in progress, for visual regression (stage 7 section 4). */
     let lastCapture: { bytes: Uint8Array; page: Page } | undefined;
@@ -341,7 +356,11 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       session.currentIndex = index;
       await emit({ type: "stepStarted", index, stepId: step.id, action: step.action, startedAt: startedAt.toISOString() });
       lastCapture = undefined;
-      const outcome = await runStep(step, index, session, plan, opts, saveScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, secretMasks);
+      const maskNow = async (page: Page) => {
+        await forceMask(page, masking).catch(() => {});
+        return secretMasks(page);
+      };
+      const outcome = await runStep(step, index, session, plan, opts, saveScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, maskNow);
       if (outcome.limit) runError = { code: "artifact_limit", message: outcome.limit.message };
 
       if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError) {
@@ -492,7 +511,7 @@ async function runStep(
   session: RunSession,
   plan: ExecutionPlan,
   opts: RunPlanOptions,
-  saveScreenshot: (name: string, stepIndex: number, extraMask?: string) => Promise<void>,
+  saveScreenshot: (name: string, stepIndex: number, extraMask?: string, forStep?: boolean) => Promise<void>,
   stopReason: () => AbortReason | undefined,
   log: (message: string) => Promise<void>,
   /** Whether a request was blocked during this step (redirect targets only show up this way). */
@@ -539,7 +558,7 @@ async function runStep(
       signal: opts.signal,
       screenshot: async () => {
         await settle(session);
-        await saveScreenshot(step.name || `step-${index + 1}`, index, step.mask);
+        await saveScreenshot(step.name || `step-${index + 1}`, index, step.mask, true);
       },
       maskBeforeInput: async (page) => {
         await maskNow(page).catch(() => {});

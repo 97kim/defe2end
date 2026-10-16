@@ -3,7 +3,7 @@
 // the contract.
 import { z } from "zod";
 import { NO_STOP, RUN_ERROR_CODES, RUN_TERMINAL_STATUSES, STEP_RESULT_STATUSES, type StopCause } from "./run-status.js";
-import { renderConditionsSchema, VISUAL_RUNTIMES, VISUAL_VERDICTS } from "./screen-quality.js";
+import { maskingSettingsSchema, renderConditionsSchema, VISUAL_RUNTIMES, VISUAL_VERDICTS } from "./screen-quality.js";
 import { stepSchema, STEP_FORMAT_VERSION } from "./steps.js";
 
 /** Resource limits (contract section 3). Defaults are estimates until measured; deployments override them by env. */
@@ -67,6 +67,11 @@ export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
 
 /** Upper bound of one `dom_summary` artifact (stage 6 contract section 8). */
 export const DOM_SUMMARY_MAX_BYTES = 8 * 1024;
+/**
+ * Upper bound of one step's browser log (`log` artifact with a step index). The runner keeps at most 50 lines of
+ * 500 characters per step, which stays under this in UTF-8.
+ */
+export const STEP_LOG_MAX_BYTES = 96 * 1024;
 
 export const deviceSchema = z.strictObject({
   viewport: z.strictObject({ width: z.number().int().min(200).max(4000), height: z.number().int().min(200).max(4000) }),
@@ -138,6 +143,8 @@ export const runSnapshotSchema = z.strictObject({
       baselines: z.array(z.strictObject({ stepId: z.string(), runtime: z.enum(VISUAL_RUNTIMES), versionId: z.string().nullable() })),
     })
     .optional(),
+  /** Stage 7 section 5: the site's selectors and the scenario switch at request time. Absent (older runs) = on, no selectors. */
+  masking: maskingSettingsSchema.optional(),
 });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 

@@ -46,8 +46,8 @@ type Props = {
   testRunAvailable: boolean;
 };
 
-const snapshot = (name: string, description: string, siteId: string, steps: Step[], retryOnFailure: boolean | null) =>
-  JSON.stringify({ name: name.trim(), description, siteId, steps: steps.map(cleanStep), retryOnFailure });
+const snapshot = (name: string, description: string, siteId: string, steps: Step[], retryOnFailure: boolean | null, maskingEnabled = true) =>
+  JSON.stringify({ name: name.trim(), description, siteId, steps: steps.map(cleanStep), retryOnFailure, maskingEnabled });
 
 /** Schema messages per step index and field (`_step` for the step as a whole). */
 function stepErrors(steps: Step[]): Map<number, Record<string, string>> {
@@ -76,6 +76,7 @@ export function StepEditor({ slug, userId, workspaceName, scenario, sites, allTa
   const [lastTestRunId, setLastTestRunId] = useState<string | null>(serverLastTestRunId);
   useEffect(() => setLastTestRunId(serverLastTestRunId), [serverLastTestRunId]);
   const [retryOnFailure, setRetryOnFailure] = useState(scenario.retryOnFailure);
+  const [maskingEnabled, setMaskingEnabled] = useState(scenario.maskingEnabled);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Field errors show after the first save attempt and then follow edits.
   const [checked, setChecked] = useState(false);
@@ -96,8 +97,8 @@ export function StepEditor({ slug, userId, workspaceName, scenario, sites, allTa
   const [envId, setEnvId] = useState(site?.environments[0]?.id);
   const env = site?.environments.find((e) => e.id === envId) ?? site?.environments[0];
 
-  const original = useMemo(() => snapshot(scenario.name, scenario.description, scenario.site.id, scenario.steps, scenario.retryOnFailure), [scenario]);
-  const dirty = !readOnly && snapshot(name, description, siteId, steps, retryOnFailure) !== original;
+  const original = useMemo(() => snapshot(scenario.name, scenario.description, scenario.site.id, scenario.steps, scenario.retryOnFailure, scenario.maskingEnabled), [scenario]);
+  const dirty = !readOnly && snapshot(name, description, siteId, steps, retryOnFailure, maskingEnabled) !== original;
   const api_ = `/api/w/${slug}/scenarios/${scenario.id}`;
 
   // Restore a draft kept from an earlier visit (browser Back/Forward can't be blocked, so edits are kept instead).
@@ -129,6 +130,7 @@ export function StepEditor({ slug, userId, workspaceName, scenario, sites, allTa
     setSiteId(scenario.site.id);
     setSteps(scenario.steps);
     setRetryOnFailure(scenario.retryOnFailure);
+    setMaskingEnabled(scenario.maskingEnabled);
     setBaseUpdatedAt(scenario.updatedAt);
     setRestored(null);
     setConflict(false);
@@ -191,6 +193,7 @@ export function StepEditor({ slug, userId, workspaceName, scenario, sites, allTa
       steps: cleaned,
       // Sent only when changed, so a server without the setting still saves everything else.
       ...(retryOnFailure !== null && retryOnFailure !== scenario.retryOnFailure ? { retryOnFailure } : {}),
+      ...(maskingEnabled !== scenario.maskingEnabled ? { maskingEnabled } : {}),
     });
     setSaving(false);
     if (res.status === 409) {
@@ -490,6 +493,12 @@ export function StepEditor({ slug, userId, workspaceName, scenario, sites, allTa
           <p className="flex items-start gap-1.5 text-meta text-text-muted">{t("retry.warning")}</p>
         </div>
       )}
+
+      {/* Screen masking (stage 7 section 5) */}
+      <div className="flex flex-col gap-1 border-t border-border px-6 py-3">
+        <Toggle checked={maskingEnabled} onChange={setMaskingEnabled} label={t("masking.label")} disabled={readOnly} />
+        <p className={`flex items-start gap-1.5 text-meta ${maskingEnabled ? "text-text-muted" : "text-warn"}`}>{maskingEnabled ? t("masking.help") : t("masking.off")}</p>
+      </div>
 
       {/* Steps */}
       <div role="table" aria-label={t("title")} className="border-t border-border">

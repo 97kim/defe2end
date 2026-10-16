@@ -3,7 +3,7 @@
 // when an old app could misread the new shape).
 import { z } from "zod";
 import { executionPlanSchema, stepOutcomeSchema, storageStateSchema } from "./execution.js";
-import { COMPARISON_SIDES, renderConditionsSchema, VISUAL_RUNTIMES } from "./screen-quality.js";
+import { COMPARISON_SIDES, maskingSettingsSchema, renderConditionsSchema, VISUAL_RUNTIMES } from "./screen-quality.js";
 import { RUN_TERMINAL_STATUSES, RUN_STATUSES, stopCauseSchema } from "./run-status.js";
 import { STEP_ACTIONS } from "./steps.js";
 
@@ -229,13 +229,7 @@ export const desktopPinnedBaselineSchema = z.strictObject({
 export type DesktopPinnedBaseline = z.infer<typeof desktopPinnedBaselineSchema>;
 
 /** Masking settings of the run (stage 7 contract section 5); step `mask` stays on the steps. */
-export const desktopMaskingSchema = z.strictObject({
-  /** Scenario switch: off turns site selectors and automatic detection off, never input or step masks. */
-  enabled: z.boolean(),
-  /** The site's selector list, already split and validated. */
-  selectors: z.array(z.string()),
-  policyVersion: z.number().int().min(1),
-});
+export const desktopMaskingSchema = maskingSettingsSchema;
 export type DesktopMasking = z.infer<typeof desktopMaskingSchema>;
 
 /** Kept in memory only by the app: `plan.variables` and `plan.storageState` hold secrets. */

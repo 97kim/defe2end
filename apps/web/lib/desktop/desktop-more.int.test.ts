@@ -1,7 +1,7 @@
 // Stage 4 contract section 11, the rest of the server side: artifacts and attachments, stop-run, heartbeat,
 // group start re-check, reconcile vs completion, other-workspace ids, and login sessions (section 5).
 import { registerDesktopArtifact } from "@defe2end/db";
-import { DESKTOP_CAPABILITIES, DESKTOP_HEADERS, formatDesktopClientHeader, type StorageState } from "@defe2end/shared";
+import { DESKTOP_CAPABILITIES, DESKTOP_HEADERS, formatDesktopClientHeader, STEP_LOG_MAX_BYTES, type StorageState } from "@defe2end/shared";
 import { attachmentKey, decryptSecret } from "@defe2end/shared/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import * as captureRoute from "../../app/api/w/[slug]/environments/[environmentId]/auth-session/capture/route";
@@ -100,6 +100,19 @@ describeDb("desktop server, round 2", () => {
     expect((await put(id, claimToken, "video", "main", new Uint8Array(1), 201 * 1024 * 1024)).status).toBe(413);
     expect((await put(id, claimToken, "video", "bad key", new Uint8Array(1))).status).toBe(400);
     expect((await put(id, "wrong", "log", "log", new Uint8Array(1))).status).toBe(409);
+  });
+
+  it("keeps each step's browser log apart from the others and the run-wide log, with its step index", async () => {
+    const { id, claimToken } = await running();
+    const text = (s: string) => new TextEncoder().encode(s);
+    expect((await put(id, claimToken, "log", "step-0", text("console.error: a\n"))).status).toBe(201);
+    expect((await put(id, claimToken, "log", "step-2", text("response 404: GET /b\n"))).status).toBe(201);
+    expect((await put(id, claimToken, "log", "log", text("run log\n"))).status).toBe(201);
+    const rows = await getDb().artifact.findMany({ where: { runId: id, kind: "log" }, orderBy: { name: "asc" } });
+    expect(rows.map((r) => [r.name, r.stepIndex])).toEqual([["log", null], ["step-0", 0], ["step-2", 2]]);
+    expect(await Promise.all(rows.map(async (r) => (await getStorage().stat(r.storageKey))?.sizeBytes))).toEqual([8, 17, 21]);
+    expect((await put(id, claimToken, "log", "step-1", new Uint8Array(1), STEP_LOG_MAX_BYTES + 1)).status).toBe(413);
+    expect((await put(id, claimToken, "log", "step-x", new Uint8Array(1))).status).toBe(400);
   });
 
   it("the run total holds under concurrent registrations (same key counted once)", async () => {

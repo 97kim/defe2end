@@ -10,3 +10,4 @@ export { runWithRetries, type RetriedRun, type RunRetryPolicy, type RunWithRetri
 export type { UploadFile } from "./actions.js";
 export { collectRenderConditions, detectRuntime, fontSetId, renderConditionDiff, type RenderConditions, type RunRuntime } from "./render-conditions.js";
 export { displayPercent, judgeScreenshot, type PinnedBaseline, type VisualRegressionOptions } from "./visual-regression.js";
+export { captureMasked, DEFAULT_MASKING, MASKING_FAILED_MESSAGE, type MaskedCapture } from "./masking.js";

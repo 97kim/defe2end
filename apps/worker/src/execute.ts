@@ -134,6 +134,7 @@ async function runAttempt(
     owner: deps.owner,
     sandbox: deps.config.sandbox,
     resolveAttachment: attachmentResolver(deps, claimed),
+    ...(runSnapshotSchema.parse(claimed.snapshot).masking ? { masking: runSnapshotSchema.parse(claimed.snapshot).masking } : {}),
     onEvent: async (event) => {
       if (event.type === "log") logLines.push(`${event.stepIndex === undefined ? "" : `[step ${event.stepIndex + 1}] `}${event.level}: ${event.message}`);
       if (event.type !== "stepFinished") return;

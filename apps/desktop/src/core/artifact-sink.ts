@@ -10,7 +10,7 @@ import { readBody, type DesktopApi } from "./api-client.js";
 /** One screenshot may not exceed this; everything else counts toward the run total only. */
 export const SCREENSHOT_MAX_BYTES = 10 * 1024 * 1024;
 
-/** The server's key for a runner file: `step-{index}`, `main`/`popup-N`, `trace`, `log`. */
+/** The server's key for a runner file: `step-{index}`, `main`/`popup-N`, `trace`, `log` (a step's log: `step-{index}`). */
 export function artifactKey(meta: ArtifactMeta): string {
   switch (meta.kind) {
     case "screenshot":
@@ -23,6 +23,9 @@ export function artifactKey(meta: ArtifactMeta): string {
       const n = /^video-(\d+)$/.exec(meta.name);
       return n && Number(n[1]) > 1 ? `popup-${Number(n[1]) - 1}` : "main";
     }
+    case "log":
+      // A step's browser log gets a key of its own; the run-wide log stays one file.
+      return meta.stepIndex === undefined ? "log" : `step-${meta.stepIndex}`;
     default:
       return meta.kind;
   }
