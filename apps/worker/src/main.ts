@@ -1,4 +1,4 @@
-import { createDbClient } from "@defe2end/db";
+import { assertNotRestoring, createDbClient } from "@defe2end/db";
 import { loadConfig } from "./config.js";
 import { createWorker } from "./worker.js";
 
@@ -12,6 +12,12 @@ function beat(): void {
   inFlight = db.heartbeat.create({ data: { workerId: config.workerId } }).catch((err: unknown) => console.error("heartbeat failed", err));
 }
 
+try {
+  await assertNotRestoring(db);
+} catch (err) {
+  console.error(`worker cannot start: ${(err as Error).message}`);
+  process.exit(1);
+}
 console.log(`worker ${config.workerId} started, ${config.concurrency} concurrent runs, heartbeat every ${config.heartbeatMs}ms`);
 beat();
 const timer = setInterval(beat, config.heartbeatMs);

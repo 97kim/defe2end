@@ -31,7 +31,12 @@ services:
       context: ..
       dockerfile: packages/db/Dockerfile
     environment:
-      <<: *database-url
+      <<: [*database-url, *storage-dir]
+      # `backup` records a check of the key (never the key) and `restore` compares it.
+      DEFE2END_ENCRYPTION_KEY: ${DEFE2END_ENCRYPTION_KEY:?set DEFE2END_ENCRYPTION_KEY in .env}
+    # The storage volume is for `backup`/`restore` (docs/backup-restore.md); migrations don't touch it.
+    volumes:
+      - run-files:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
