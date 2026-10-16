@@ -611,8 +611,11 @@ async function runStep(
       if (err instanceof ArtifactLimitError) return { status: "error", attempts, failure: new StepFailure("infra", err.message, {}, "error"), limit: err };
       if (err instanceof StepWarning) return { status: "warning", attempts, failure: new StepFailure("warning", err.message) };
       failure = classify(err);
-      maskingRefused = err instanceof MaskingRefused;
-      if (maskingRefused) continue;
+      // Kept over every try of the step: a refusal once means no failure screenshot, whatever the retry did.
+      if (err instanceof MaskingRefused) {
+        maskingRefused = true;
+        continue;
+      }
       // A navigation that failed because a request in it (e.g. a redirect target) was blocked: a safety block,
       // so neither retried nor turned into `skipped` by optional.
       if (failure.status === "failed" && !failure.code && sawBlocked()) failure = new StepFailure("blocked_request", failure.message);
