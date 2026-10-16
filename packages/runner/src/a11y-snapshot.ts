@@ -5,11 +5,29 @@
 // If (1) can't finish in time or can't hide a node, there is no snapshot at all.
 import { maskSecrets, redactText } from "@defe2end/shared";
 import type { Page } from "playwright";
+import { MASK_ATTR, MASK_INPUT_ATTR } from "./masking.js";
 
 export const A11Y_CAPTURE_BUDGET_MS = 3_000;
 const MARK = "data-defe2end-a11y-hidden";
 
 export type A11ySnapshotResult = { ok: true; text: string } | { ok: false; reason: string };
+
+/**
+ * Hidden whatever the settings: what the page's masking marked (site selectors, automatic detection) and the
+ * password and card fields — the same areas the screenshot covers.
+ */
+const ALWAYS_HIDDEN = [`[${MASK_ATTR}]`, `[${MASK_INPUT_ATTR}]`, 'input[type="password"]', 'input[autocomplete^="cc-"]', 'input[autocomplete="card-number"]'];
+
+/** Card numbers and resident registration numbers, as the page's automatic detection finds them. */
+const NUMBER_PATTERNS = [/\b\d(?:[ -]?\d){12,18}\b/g, /\b\d{6}[\s-]?[1-8]\d{6}\b/g];
+export const REDACTED_NUMBER = "[number]";
+
+/** Snapshot only: `redactText` leaves these numbers alone (its other users keep them). */
+export function redactNumbers(text: string): string {
+  let out = text;
+  for (const re of NUMBER_PATTERNS) out = out.replace(re, (m) => (m.replace(/\D/g, "").length <= 8 ? m : REDACTED_NUMBER));
+  return out;
+}
 
 /** Inputs whose value would otherwise appear after the colon (`- textbox "Email": mina@…`). */
 const VALUE_ROLES = /^(\s*- (?:textbox|searchbox|combobox|spinbutton|slider)\b[^:]*?)(?::\s.*)?$/;
@@ -44,12 +62,12 @@ export async function captureA11ySnapshot(page: Page, opts: { selectors: string[
   const budget = opts.budgetMs ?? A11Y_CAPTURE_BUDGET_MS;
   const started = Date.now();
   try {
-    const result = await withBudget(page.evaluate(hideInPage, { selectors: opts.selectors, mark: MARK }), budget);
+    const result = await withBudget(page.evaluate(hideInPage, { selectors: [...opts.selectors, ...ALWAYS_HIDDEN], mark: MARK }), budget);
     if (!result.ok) return { ok: false, reason: result.reason };
     const left = budget - (Date.now() - started);
     if (left <= 0) return { ok: false, reason: "masking took too long" };
     const raw = await page.locator("body").ariaSnapshot({ timeout: left });
-    return { ok: true, text: redactText(maskSecrets(dropInputValues(raw), opts.secrets)) };
+    return { ok: true, text: redactNumbers(redactText(maskSecrets(dropInputValues(raw), opts.secrets))) };
   } catch (err) {
     return { ok: false, reason: `masking failed: ${(err as Error).message.split("\n")[0]}` };
   } finally {
@@ -64,7 +82,7 @@ function hideInPage({ selectors, mark }: { selectors: string[]; mark: string }):
   for (let i = 0; i < roots.length; i++) {
     for (const el of Array.from(roots[i]!.querySelectorAll("*"))) if (el.shadowRoot) roots.push(el.shadowRoot);
   }
-  const all = [...selectors, 'input[type="password"]', 'input[autocomplete^="cc-"]'];
+  const all = selectors;
   const targets = new Set<Element>();
   for (const root of roots) {
     for (const sel of all) {
