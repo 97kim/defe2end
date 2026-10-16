@@ -8,6 +8,18 @@ Start with the logs: `docker compose logs web worker migrate`.
 - `DEFE2END_ENCRYPTION_KEY must be base64 of exactly 32 bytes`: generate one the same way.
 - The key differs from the one the database was set up with: use the original key. If it is truly lost, you need a fresh database (or accept losing secret values after a restore).
 
+## `web` or `worker` exits: migrations don't match
+
+The database's migrations differ from the ones the image knows, usually because the images run different versions. Run `web`, `worker` and `migrate` at the same `DEFE2END_VERSION` ([upgrade.md](upgrade.md)).
+
+## `web` or `worker` exits: a restore is in progress
+
+A restore stopped halfway. Empty the database and storage and restore again ([backup-restore.md](backup-restore.md)).
+
+## Schedules don't fire after a restore
+
+Automation is paused after a restore. Resume it with `docker compose run --rm migrate resume-automation` ([backup-restore.md](backup-restore.md#automation-is-paused-after-a-restore)).
+
 ## `migrate` fails
 
 The database isn't reachable or a migration failed. Check `docker compose logs migrate`. `web` and `worker` wait for `migrate` to succeed. If you upgraded, check the release notes for required intermediate versions.
@@ -21,6 +33,8 @@ The database isn't reachable or a migration failed. Check `docker compose logs m
 `BETTER_AUTH_URL` must be exactly the URL users open, including `https://` and the port. Restart `web` after changing it. For OIDC and GitHub, the callback URL registered at the provider must use the same base.
 
 ## Runs stay queued
+
+- After a restore, automation is paused until you resume it.
 
 - Is `worker` running? `docker compose ps`.
 - Free disk below `MIN_FREE_DISK_MB`: the worker takes no new runs.

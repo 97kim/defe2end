@@ -10,7 +10,7 @@ defE2End runs as three containers next to a Postgres database: `web` (UI and API
 
 ## 1. Get the compose files
 
-Pick a release version (`X.Y.Z`) from the GitHub Releases page. Images are published only under version tags (`X.Y.Z` and `X.Y`); there is no `latest`.
+Pick a release version (`X.Y.Z`) from the GitHub Releases page. Images are published only under exact version tags (`X.Y.Z`, or `X.Y.Z-rc.N` for release candidates); there is no `X.Y` or `latest` tag. `DEFE2END_VERSION` pins all three images to the same version.
 
 ```sh
 git clone --depth 1 --branch v1.0.0 https://github.com/97kim/defe2end.git

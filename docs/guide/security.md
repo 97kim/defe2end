@@ -22,7 +22,7 @@ The worker opens whatever URLs scenarios point to, including addresses inside yo
 - The app and `defe2end-mcp` talk over a local socket. On macOS it is a Unix socket in the app data folder (folder `0700`, socket `0600`). On Windows it is a named pipe restricted to the current user's SID. The session token for the socket is kept in the OS secure store (Keychain, DPAPI).
 - **Processes running as the same OS user are trusted.** Any program you run under your account can open the socket and read the token, just as it can read your browser data. defE2End does not defend against malware on your own account.
 - **Windows pipe permissions:** the access control is tested in CI but has not yet been verified by hand on a clean Windows PC for this release.
-- The app is not code-signed. Check the checksum of every installer ([desktop-app.md](desktop-app.md#check-the-checksum)).
+- The app is not code-signed. Verify every installer (checksum and provenance) ([desktop-app.md](desktop-app.md#verify-the-file)).
 
 ## AI
 
