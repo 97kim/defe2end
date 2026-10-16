@@ -105,7 +105,7 @@ export async function recordSteps(
   const attempt = Math.max(0, ...body.events.map((e) => (e.type === "stepStarted" ? e.attempt : e.result.attempt)));
   if (attempt > 0 && !(await recordDesktopAttempt(db, runId, body.claimToken, attempt))) throw leaseLost();
   if (finished.length > 0 && !(await recordDesktopSteps(db, runId, body.claimToken, finished))) throw leaseLost();
-  await settleVisualSteps(runId, finished);
+  await settleVisualSteps(runId, body.claimToken, finished);
 }
 
 /**
@@ -113,15 +113,15 @@ export async function recordSteps(
  * key (else `skipped`); a `created` one makes the first baseline, or is compared on the server if another run
  * made it first. Runs while the pins still exist, before the run is completed.
  */
-async function settleVisualSteps(runId: string, steps: DesktopStepInput[]): Promise<void> {
+async function settleVisualSteps(runId: string, claimToken: string, steps: DesktopStepInput[]): Promise<void> {
   const db = getDb();
   for (const step of steps) {
     if (!step.visualVerdict) continue;
     const row = await db.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt: step.attempt, index: step.index } }, select: { id: true, visualVerdict: true, visualServerVerdict: true, visualBaselineVersionId: true } });
     if (!row || row.visualServerVerdict) continue;
     if (row.visualVerdict === "created") {
-      if (!row.visualBaselineVersionId) await settleCreatedBaseline(db, baselineFiles(), row.id);
-    } else await checkReportedVisualVerdict(db, row.id);
+      if (!row.visualBaselineVersionId) await settleCreatedBaseline(db, baselineFiles(), row.id, claimToken);
+    } else await checkReportedVisualVerdict(db, row.id, claimToken);
   }
 }
 
@@ -136,7 +136,7 @@ export async function completeRun(principal: DesktopPrincipal, runId: string, bo
   const visualSteps = body.steps.filter((s) => s.visualVerdict).map(toStepInput);
   if (visualSteps.length > 0) {
     if (!(await recordDesktopSteps(getDb(), runId, body.claimToken, visualSteps))) throw leaseLost();
-    await settleVisualSteps(runId, visualSteps);
+    await settleVisualSteps(runId, body.claimToken, visualSteps);
   }
   const mismatch = judged.status !== body.verdict;
   const result = await completeDesktopRun(getDb(), runId, body.claimToken, body.steps.map(toStepInput), {

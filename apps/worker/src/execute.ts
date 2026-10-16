@@ -149,7 +149,7 @@ async function runAttempt(
       try {
         // Step results are written in order; a refused write means the lease is gone.
         if (!(await recordStepResult(db, runId, claimToken, { ...result, attempt }))) stop("worker_lost");
-        else if (result.visualVerdict === "created") await settleFirstBaseline(deps, runId, attempt, result.index, log);
+        else if (result.visualVerdict === "created") await settleFirstBaseline(deps, runId, claimToken, attempt, result.index, log);
       } catch (err) {
         log(`step result not stored: ${(err as Error).message}`);
         stop("worker_lost");
@@ -269,10 +269,10 @@ async function visualOptions(deps: ExecuteDeps, claimed: ClaimedRun): Promise<Vi
 }
 
 /** First baseline of a key (section 4): copy the screenshot, or compare with the run that won the race. */
-async function settleFirstBaseline(deps: ExecuteDeps, runId: string, attempt: number, index: number, log: (message: string) => void): Promise<void> {
+async function settleFirstBaseline(deps: ExecuteDeps, runId: string, claimToken: string, attempt: number, index: number, log: (message: string) => void): Promise<void> {
   try {
     const step = await deps.db.stepResult.findUnique({ where: { runId_attempt_index: { runId, attempt, index } }, select: { id: true } });
-    if (step) await settleCreatedBaseline(deps.db, storageBaselineFiles(deps.storage), step.id);
+    if (step) await settleCreatedBaseline(deps.db, storageBaselineFiles(deps.storage), step.id, claimToken);
   } catch (err) {
     log(`first baseline not stored: ${(err as Error).message}`);
   }

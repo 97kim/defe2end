@@ -108,7 +108,11 @@ export interface StepVisualView {
   baseline: { version: number; currentVersion: number; url: string } | null;
   /** `incomparable`: which render conditions differ. */
   differs: (keyof RenderConditions)[];
-  /** Approval is possible: render conditions were recorded. */
+  /**
+   * The capture can become the new baseline, whatever its verdict (a browser update makes `incomparable`, a new
+   * device `size_mismatch`): a passed or warned screenshot step with render conditions, of a saved scenario's
+   * run that isn't a comparison child, and not already the current baseline. Same rules as the approval API.
+   */
   approvable: boolean;
 }
 
@@ -178,7 +182,8 @@ export function baselineUrl(slug: string, runId: string, versionId: string): str
   return `/api/w/${slug}/runs/${runId}/baselines/${versionId}`;
 }
 
-function visualView(slug: string, runId: string, r: RunRow["stepResults"][number]): StepVisualView | null {
+function visualView(slug: string, run: { id: string; scenarioId: string | null; comparisonId: string | null }, r: RunRow["stepResults"][number]): StepVisualView | null {
+  const runId = run.id;
   const verdict = r.visualServerVerdict ?? r.visualVerdict;
   if (!verdict) return null;
   const render = renderConditionsSchema.safeParse(r.render);
@@ -192,7 +197,12 @@ function visualView(slug: string, runId: string, r: RunRow["stepResults"][number
     shift: (r.visualShift as { x: number; y: number } | null) ?? null,
     baseline: v ? { version: v.version, currentVersion: v.baseline.currentVersion, url: baselineUrl(slug, runId, v.id) } : null,
     differs: verdict === "incomparable" && render.success && baseRender?.success ? renderConditionDiff(baseRender.data, render.data) : [],
-    approvable: render.success,
+    approvable:
+      render.success &&
+      (r.status === "passed" || r.status === "warning") &&
+      run.scenarioId !== null &&
+      run.comparisonId === null &&
+      !(v && r.visualVerdict === "created" && !r.visualServerVerdict && v.version === v.baseline.currentVersion),
   };
 }
 
@@ -228,7 +238,7 @@ function toDetail(slug: string, row: RunRow): RunDetail {
               expected: r.expected,
               actual: r.actual,
               possibleDuplicate: (r as { possibleDuplicate?: boolean }).possibleDuplicate ?? false,
-              visual: visualView(slug, row.id, r),
+              visual: visualView(slug, { id: row.id, scenarioId: row.scenarioId, comparisonId: row.comparisonId }, r),
             }
           : null,
       };

@@ -2,6 +2,7 @@
 // its race, checking an app's verdict, approval, and dropping the pins when the run ends.
 import { renderConditionDiff, renderConditionsSchema, runSnapshotSchema, VISUAL_RUNTIMES, VISUAL_WARNING_VERDICTS, visualDeviceKey, type RenderConditions, type RunSnapshot, type VisualRuntime, type VisualVerdict } from "@defe2end/shared";
 import { Prisma, type PrismaClient } from "./generated/prisma/client.js";
+import { withOwnedRun } from "./runs.js";
 
 type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -124,15 +125,18 @@ const STEP_SELECT = {
  * this run and belong to the same workspace and key; `created` needs the key to have had no baseline when the
  * run was pinned. Anything else becomes `skipped`. Returns the corrected verdict.
  */
-export async function checkReportedVisualVerdict(db: Db | Tx, stepResultId: string): Promise<VisualVerdict | null> {
+/** With `claimToken`, the correction is written only while the run still holds that lease (else null). */
+export async function checkReportedVisualVerdict(db: Db, stepResultId: string, claimToken?: string): Promise<VisualVerdict | null> {
   const step = (await db.stepResult.findUnique({ where: { id: stepResultId }, select: STEP_SELECT })) as StepRow | null;
   if (!step?.visualVerdict) return null;
   const ok = await reportedVerdictValid(db, step);
   if (ok) return step.visualVerdict;
-  await db.stepResult.update({
+  const write = (tx: Db | Tx) => tx.stepResult.update({
     where: { id: step.id },
     data: { visualVerdict: "skipped", visualBaselineVersionId: null, visualDiffPercent: null, visualShiftDiffPercent: null, visualShift: Prisma.DbNull, ...(step.status === "warning" ? { status: "passed", errorCode: null, errorMessage: null } : {}) },
   });
+  if (claimToken === undefined) await write(db);
+  else if (!(await withOwnedRun(db, step.runId, claimToken, write)).owned) return null;
   return "skipped";
 }
 
@@ -161,20 +165,22 @@ async function reportedVerdictValid(db: Db | Tx, step: StepRow): Promise<boolean
  * A step reported `created` (section 4, first baseline): copies its screenshot and makes baseline version 1.
  * The unique key lets one run win; a loser is compared on the server with the winner's version 1 and gets
  * `visualServerVerdict` (and a warning when that says so), so no two runs both claim `created`.
+ *
+ * Every write happens under the run's lease (`withOwnedRun`: run row lock, still running, same claim), the
+ * same lock the run's end takes. A settlement that finishes after the run ended — warning count and message
+ * already fixed — changes nothing and returns null; a baseline copy it made is deleted again.
  */
-export async function settleCreatedBaseline(db: Db, files: BaselineFiles, stepResultId: string): Promise<VisualVerdict | null> {
+export async function settleCreatedBaseline(db: Db, files: BaselineFiles, stepResultId: string, claimToken: string): Promise<VisualVerdict | null> {
   const step = (await db.stepResult.findUnique({ where: { id: stepResultId }, select: STEP_SELECT })) as StepRow | null;
   if (!step || step.visualVerdict !== "created" || step.status !== "passed") return null;
-  if (!(await reportedVerdictValid(db, step))) return checkReportedVisualVerdict(db, stepResultId);
+  if (!(await reportedVerdictValid(db, step))) return checkReportedVisualVerdict(db, stepResultId, claimToken);
   const { run } = step;
   const render = renderConditionsSchema.parse(step.render);
   const runtime = runtimeOfRender(run.location, render)!;
   const device = runSnapshotSchema.parse(run.snapshot).visual!.device;
   const shot = await db.artifact.findFirst({ where: { runId: step.runId, attempt: step.attempt, stepIndex: step.index, kind: "screenshot" }, orderBy: { createdAt: "desc" }, select: { storageKey: true } });
-  const skip = async () => {
-    await db.stepResult.update({ where: { id: step.id }, data: { visualServerVerdict: "skipped" } });
-    return "skipped" as const;
-  };
+  const owned = <T>(fn: (tx: Tx) => Promise<T>) => withOwnedRun(db, step.runId, claimToken, fn);
+  const skip = async () => ((await owned((tx) => tx.stepResult.update({ where: { id: step.id }, data: { visualServerVerdict: "skipped" } }))).owned ? ("skipped" as const) : null);
   if (!shot) return skip();
   let bytes: Uint8Array;
   try {
@@ -185,7 +191,7 @@ export async function settleCreatedBaseline(db: Db, files: BaselineFiles, stepRe
   const size = pngSize(bytes);
   if (!size) return skip();
   const key = await files.writeCopy(run.workspaceId, bytes);
-  const won = await db.$transaction(async (tx) => {
+  const outcome = await owned(async (tx) => {
     const [row] = await tx.$queryRaw<{ id: string }[]>`
       INSERT INTO "VisualBaseline" (id, "workspaceId", "scenarioId", "stepId", "environmentId", device, runtime, "currentVersion", "updatedAt")
       VALUES (${`vb_${crypto.randomUUID()}`}, ${run.workspaceId}, ${run.scenarioId}, ${step.stepId}, ${run.environmentId}, ${device}, ${runtime}, 1, clock_timestamp())
@@ -199,8 +205,9 @@ export async function settleCreatedBaseline(db: Db, files: BaselineFiles, stepRe
     await tx.stepResult.update({ where: { id: step.id }, data: { visualBaselineVersionId: version.id } });
     return true;
   });
-  if (won) return "created";
-  await files.delete(key).catch(() => {});
+  if (!outcome.owned || !outcome.value) await files.delete(key).catch(() => {});
+  if (!outcome.owned) return null;
+  if (outcome.value) return "created";
   // Lost the race: judge against the winner's first version.
   const winner = await db.visualBaselineVersion.findFirst({
     where: { version: 1, baseline: { scenarioId: run.scenarioId!, stepId: step.stepId, environmentId: run.environmentId, device, runtime } },
@@ -229,8 +236,8 @@ export async function settleCreatedBaseline(db: Db, files: BaselineFiles, stepRe
       verdict = "skipped";
     }
   }
-  await db.stepResult.update({ where: { id: step.id }, data: { ...data, visualServerVerdict: verdict } });
-  return verdict;
+  const stored = await owned((tx) => tx.stepResult.update({ where: { id: step.id }, data: { ...data, visualServerVerdict: verdict } }));
+  return stored.owned ? verdict : null;
 }
 
 export type ApproveResult =
