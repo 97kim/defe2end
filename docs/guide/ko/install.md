@@ -19,6 +19,8 @@ cd defe2end/deploy
 
 `deploy/`의 `docker-compose.yml`, `chromium-seccomp.json`, `.env.example` 세 파일만 있으면 돼요. 이 파일만 다른 폴더로 옮겨 써도 괜찮아요.
 
+`docker-compose.yml`은 게시된 이미지로 돌아요. 소스에서 빌드하려면(개발·CI) `deploy/docker-compose.build.yml`을 쓰세요.
+
 ## 2. `.env` 만들기
 
 ```sh

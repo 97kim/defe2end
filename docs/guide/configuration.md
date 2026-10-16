@@ -16,13 +16,13 @@ This table is checked against the code by a test (`packages/shared/src/env-docs.
 | `POSTGRES_PASSWORD` | compose | yes | — | Database password. |
 | `POSTGRES_DB` | compose | no | `defe2end` | Database name. |
 | `DATABASE_URL` | web, worker, migrate | yes | built by compose | Postgres connection string. Compose builds it from the three values above. Set it yourself to use an external Postgres. |
-| `STORAGE_DIR` | web, worker | no | `./data/storage` (compose: `/data/storage`) | Folder for screenshots, videos and other run files. `web` and `worker` must share it. |
+| `STORAGE_DIR` | web, worker, migrate | no | `./data/storage` (compose: `/data/storage`) | Folder for screenshots, videos and other run files. `web`, `worker` and `migrate` (for backup and restore) must share it. |
 
 ## Security and sign-in
 
 | Variable | Service | Required | Default | Description |
 |---|---|---|---|---|
-| `DEFE2END_ENCRYPTION_KEY` | web, worker | yes | — | Base64 of exactly 32 bytes (`openssl rand -base64 32`). Encrypts secret variables. Keep it apart from backups; the web server refuses to start if it differs from the key the database was set up with. |
+| `DEFE2END_ENCRYPTION_KEY` | web, worker, migrate | yes | — | Base64 of exactly 32 bytes (`openssl rand -base64 32`). Encrypts secret variables. Keep it apart from backups; the web server refuses to start if it differs from the key the database was set up with. |
 | `BETTER_AUTH_SECRET` | web | yes | — | Session signing secret, at least 32 characters. |
 | `BETTER_AUTH_URL` | web | no | `http://localhost:3000` | URL users open (scheme, host, port). Used for sign-in callbacks, setup and reset links. Cookies are `Secure` when it is https. |
 | `PUBLIC_URL` | web, worker | no | — | Public URL used in links sent outside the UI: Slack messages, daily reports and `url` in `/api/v1` responses. Without it those links are left out. Usually the same as `BETTER_AUTH_URL`. |
@@ -73,10 +73,6 @@ Set by the runtime or the build. Don't set these yourself.
 |---|---|---|---|---|
 | `NEXT_RUNTIME` | web | — | — | Set by Next.js. |
 | `NEXT_DIST_DIR` | web | — | `.next` | Build output folder, used by tests. |
-
-## Not in the example compose file
-
-The example compose file forwards only the variables most installs need. If you set one of the others (for example `PUBLIC_URL`, `DESKTOP_*`, `ATTACHMENT_*`, or `RUN_TIMEOUT_MS` for `web`), also add it to that service's `environment:` block, or the container won't see it.
 
 ## File storage
 

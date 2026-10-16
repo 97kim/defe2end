@@ -8,11 +8,11 @@
 
 서버와 같은 버전의 GitHub Releases 페이지에서 설치 파일을 받으세요.
 
-- macOS Apple Silicon: `…-arm64.dmg`
-- macOS Intel: `…-x64.dmg`
-- Windows: `…-setup.exe`(x64)
+- macOS Apple Silicon: `defE2End-1.0.0-arm64.dmg`
+- macOS Intel: `defE2End-1.0.0-x64.dmg`
+- Windows x64: `defE2End Setup 1.0.0.exe`
 
-릴리스마다 `SHA256SUMS` 파일과, 설치 파일마다 GitHub 출처 증명도 있어요.
+릴리스마다 `SHA256SUMS`(모든 릴리스 파일의 체크섬), `IMAGE_DIGESTS.txt`(서버 이미지 세 개의 digest), 설치 파일과 이미지의 GitHub 출처 증명도 있어요.
 
 ## 파일 검증
 
@@ -25,13 +25,15 @@
 macOS(터미널):
 
 ```sh
-shasum -a 256 ~/Downloads/defE2End-1.0.0-arm64.dmg
+cd ~/Downloads
+shasum -a 256 defE2End-1.0.0-arm64.dmg
+grep defE2End-1.0.0-arm64.dmg SHA256SUMS
 ```
 
 Windows(PowerShell):
 
 ```powershell
-Get-FileHash $env:USERPROFILE\Downloads\defE2End-1.0.0-setup.exe -Algorithm SHA256
+Get-FileHash "$env:USERPROFILE\Downloads\defE2End Setup 1.0.0.exe" -Algorithm SHA256
 ```
 
 해시가 다르면 파일을 지우고 다시 받으세요. 해시가 맞지 않는 파일은 설치하지 마세요.
@@ -44,11 +46,13 @@ Get-FileHash $env:USERPROFILE\Downloads\defE2End-1.0.0-setup.exe -Algorithm SHA2
 gh attestation verify defE2End-1.0.0-arm64.dmg --repo 97kim/defe2end
 ```
 
-성공 메시지로 끝나야 해요. 서버 이미지도 같은 방법으로 확인할 수 있어요.
+성공 메시지로 끝나야 해요. 서버 이미지도 `IMAGE_DIGESTS.txt`에 적힌 digest로 같은 방법으로 확인할 수 있어요.
 
 ```sh
-gh attestation verify oci://ghcr.io/97kim/defe2end-web:1.0.0 --repo 97kim/defe2end
+gh attestation verify oci://ghcr.io/97kim/defe2end-web@sha256:… --repo 97kim/defe2end
 ```
+
+버전 태그가 가리키는 digest는 `docker buildx imagetools inspect ghcr.io/97kim/defe2end-web:1.0.0`으로 볼 수 있고, 파일의 값과 같아야 해요.
 
 ## 설치와 처음 실행
 
@@ -73,7 +77,7 @@ gh attestation verify oci://ghcr.io/97kim/defe2end-web:1.0.0 --repo 97kim/defe2e
 
 ## 서버 연결
 
-처음 실행하면 서버 주소(`BETTER_AUTH_URL`과 같은 주소)를 물어요. 웹과 같은 방법으로 로그인하세요. 서버는 나중에 앱 설정에서 바꿀 수 있고, 바꾸면 로그아웃돼요.
+처음 실행하면 서버 주소(`BETTER_AUTH_URL`과 같은 주소)를 물어요. 웹과 같은 방법으로 로그인하세요. 나중에 바꾸려면 아래와 같은 메뉴의 **서버 주소 바꾸기…**를 쓰세요. 바꾸면 로그아웃돼요.
 
 서버 관리자가 최소 앱 버전(`DESKTOP_MIN_VERSION`)을 정할 수 있어요. 그보다 오래된 앱은 연결 대신 업데이트 안내를 보여 줘요.
 
@@ -83,7 +87,7 @@ gh attestation verify oci://ghcr.io/97kim/defe2end-web:1.0.0 --repo 97kim/defe2e
 
 - 요청에는 인증 정보, 서버 주소, 사용자 식별자가 실리지 않아요. 공개 API 요청이라 IP 주소는 GitHub에 전달돼요.
 - 5초 안에 답이 없으면 끝내고, 실행을 막지 않고, 실패는 조용히 넘어가요.
-- 끄려면 앱 설정에서 새 버전 알림을 끄세요. 첫 확인 전(시작 후 60초 안)에도 끌 수 있어요.
+- 끄려면 **defE2End** 메뉴(macOS)나 **파일** 메뉴(Windows)에서 **새 버전 알림 받기** 체크를 해제하세요. 첫 확인 전(시작 후 60초 안)에도 끌 수 있어요.
 
 업데이트하려면 새 설치 파일을 받아 [검증](#파일-검증)하고 기존 앱 위에 설치하세요.
 

@@ -8,11 +8,11 @@ Supported: macOS on Apple Silicon and Intel, Windows x64.
 
 Get the installer from the GitHub Releases page of the version that matches your server:
 
-- macOS Apple Silicon: `…-arm64.dmg`
-- macOS Intel: `…-x64.dmg`
-- Windows: `…-setup.exe` (x64)
+- macOS Apple Silicon: `defE2End-1.0.0-arm64.dmg`
+- macOS Intel: `defE2End-1.0.0-x64.dmg`
+- Windows x64: `defE2End Setup 1.0.0.exe`
 
-Each release also has a `SHA256SUMS` file, and GitHub build provenance for every installer.
+Each release also has `SHA256SUMS` (checksums of every release file), `IMAGE_DIGESTS.txt` (the digests of the three server images) and GitHub build provenance for the installers and images.
 
 ## Verify the file
 
@@ -25,13 +25,15 @@ Compare the hash of the file you downloaded with its line in `SHA256SUMS`. They 
 macOS (Terminal):
 
 ```sh
-shasum -a 256 ~/Downloads/defE2End-1.0.0-arm64.dmg
+cd ~/Downloads
+shasum -a 256 defE2End-1.0.0-arm64.dmg
+grep defE2End-1.0.0-arm64.dmg SHA256SUMS
 ```
 
 Windows (PowerShell):
 
 ```powershell
-Get-FileHash $env:USERPROFILE\Downloads\defE2End-1.0.0-setup.exe -Algorithm SHA256
+Get-FileHash "$env:USERPROFILE\Downloads\defE2End Setup 1.0.0.exe" -Algorithm SHA256
 ```
 
 If the hash differs, delete the file and download it again. Don't install a file whose hash doesn't match.
@@ -44,11 +46,13 @@ This proves the file was built by this repository's release workflow:
 gh attestation verify defE2End-1.0.0-arm64.dmg --repo 97kim/defe2end
 ```
 
-It must end with a success message. Server images can be checked the same way:
+It must end with a success message. Server images can be checked the same way, by the digest listed in `IMAGE_DIGESTS.txt`:
 
 ```sh
-gh attestation verify oci://ghcr.io/97kim/defe2end-web:1.0.0 --repo 97kim/defe2end
+gh attestation verify oci://ghcr.io/97kim/defe2end-web@sha256:… --repo 97kim/defe2end
 ```
+
+`docker buildx imagetools inspect ghcr.io/97kim/defe2end-web:1.0.0` shows the digest the version tag points to; it must match the file.
 
 ## Install and first launch
 
@@ -73,7 +77,7 @@ You only need to do this once per installed version.
 
 ## Connect to your server
 
-On first launch the app asks for the server URL (the same URL as `BETTER_AUTH_URL`). Sign in as you do on the web. You can change the server later in the app settings; changing it signs you out.
+On first launch the app asks for the server URL (the same URL as `BETTER_AUTH_URL`). Sign in as you do on the web. To change it later, use **Change server address…** in the same menu as below; changing it signs you out.
 
 Your server admin can require a minimum app version (`DESKTOP_MIN_VERSION`). An older app shows an update notice instead of connecting.
 
@@ -83,7 +87,7 @@ The app does not update itself. 60 seconds after it starts, and then once a day,
 
 - The request carries no authentication, no server address and no user identifier. Like any request to a public API, it shows your IP address to GitHub.
 - It times out after 5 seconds, never blocks runs, and failures are ignored silently.
-- To turn it off, switch off the new-version notice in the app settings. You can do this within the first 60 seconds, before the first check.
+- To turn it off, uncheck **Tell me about new versions** in the **defE2End** menu (macOS) or the **File** menu (Windows). You can do this within the first 60 seconds, before the first check.
 
 To update, download the new installer, [verify it](#verify-the-file) and install it over the old one.
 

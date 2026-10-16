@@ -18,7 +18,7 @@ A restore stopped halfway. Empty the database and storage and restore again ([ba
 
 ## Schedules don't fire after a restore
 
-Automation is paused after a restore. Resume it with `docker compose run --rm migrate resume-automation` ([backup-restore.md](backup-restore.md#automation-is-paused-after-a-restore)).
+Automation is paused after a restore. Resume it with `docker compose run --rm --no-deps migrate resume-automation` ([backup-restore.md](backup-restore.md#automation-is-paused-after-a-restore)).
 
 ## `migrate` fails
 
@@ -35,7 +35,6 @@ The database isn't reachable or a migration failed. Check `docker compose logs m
 ## Runs stay queued
 
 - After a restore, automation is paused until you resume it.
-
 - Is `worker` running? `docker compose ps`.
 - Free disk below `MIN_FREE_DISK_MB`: the worker takes no new runs.
 - Concurrency limits (`WORKER_CONCURRENCY`, `MAX_CONCURRENT_RUNS`, `WORKSPACE_CONCURRENCY`) are full.
@@ -56,7 +55,7 @@ Your reverse proxy is buffering server-sent events. Turn off response buffering 
 
 ## Links in Slack or `/api/v1` responses are missing
 
-Set `PUBLIC_URL` and make sure it reaches both `web` and `worker` (see [configuration.md](configuration.md#not-in-the-example-compose-file)).
+Set `PUBLIC_URL` in `.env` and run `docker compose up -d` ([configuration.md](configuration.md)).
 
 ## The desktop app won't open
 
