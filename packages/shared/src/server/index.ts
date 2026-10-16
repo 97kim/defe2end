@@ -2,3 +2,4 @@
 export * from "./encryption.js";
 export * from "./link-token.js";
 export * from "./storage.js";
+export * from "./visual-compare.js";
