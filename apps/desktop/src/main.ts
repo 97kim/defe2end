@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { checkForUpdate, RELEASES_PAGE, scheduleUpdateChecks, type AvailableUpdate } from "./update-check.js";
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, session, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { RUNNER_VERSION, runPlan } from "@defe2end/runner";
 import { messages } from "@defe2end/i18n";
@@ -37,6 +38,8 @@ const SIGNED_OUT_PATHS = /^\/(login|signup|setup|api\/auth)(\/|$)/;
 interface AppSettings {
   /** "Hide the browser" for PC runs (contract 4.4.1). Local to this PC, never sent to the server. */
   hideBrowser: boolean;
+  /** New-version notice (stage 8 contract section 1); on unless turned off. */
+  updateCheck: boolean;
   installId: string;
   /** Random 4 characters, or the user's alias (display only). */
   label: string;
@@ -53,6 +56,8 @@ let sideBrowser: SideBrowser | null = null;
 let captures: CaptureController;
 /** `connected.recorder.testAttributes` of the current connection. */
 let testAttributes: string[] = [];
+/** Newer release found by the last check (null = none, or the notice is off). */
+let availableUpdate: AvailableUpdate | null = null;
 const appLocale = () => (app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en");
 
 const dataDir = () => app.getPath("userData");
@@ -64,12 +69,12 @@ async function loadSettings(): Promise<AppSettings> {
   try {
     const saved = JSON.parse(await readFile(settingsFile(), "utf8")) as Partial<AppSettings>;
     if (typeof saved.installId === "string" && typeof saved.label === "string") {
-      return { hideBrowser: saved.hideBrowser === true, installId: saved.installId, label: saved.label, serverOrigin: typeof saved.serverOrigin === "string" ? normalizeServerUrl(saved.serverOrigin) : null };
+      return { hideBrowser: saved.hideBrowser === true, updateCheck: saved.updateCheck !== false, installId: saved.installId, label: saved.label, serverOrigin: typeof saved.serverOrigin === "string" ? normalizeServerUrl(saved.serverOrigin) : null };
     }
   } catch {
     // First run.
   }
-  const fresh = { hideBrowser: false, installId: randomUUID(), label: randomBytes(3).toString("base64url").slice(0, 4), serverOrigin: null };
+  const fresh = { hideBrowser: false, updateCheck: true, installId: randomUUID(), label: randomBytes(3).toString("base64url").slice(0, 4), serverOrigin: null };
   await saveSettings(fresh);
   return fresh;
 }
@@ -227,7 +232,7 @@ async function showUpdateRequired(body: AppUpdateRequired): Promise<void> {
     defaultId: 0,
     cancelId: 1,
   });
-  if (response === 0) await shell.openExternal(body.downloadUrl ?? "https://github.com/defe2end/defe2end/releases");
+  if (response === 0) await shell.openExternal(body.downloadUrl ?? RELEASES_PAGE);
   app.quit();
 }
 
@@ -308,10 +313,29 @@ async function setHideBrowser(value: boolean): Promise<boolean> {
   return value;
 }
 
+async function setUpdateCheck(value: boolean): Promise<boolean> {
+  settings = { ...settings, updateCheck: value };
+  await saveSettings(settings);
+  if (!value && availableUpdate) {
+    availableUpdate = null;
+    send("app:update", null);
+  }
+  buildMenu();
+  return value;
+}
+
+async function runUpdateCheck(): Promise<void> {
+  const found = await checkForUpdate(app.getVersion());
+  if (!settings.updateCheck || !found || found.version === availableUpdate?.version) return;
+  availableUpdate = found;
+  send("app:update", found);
+}
+
 function buildMenu(): void {
   const text = messages[appLocale()].settings.desktopApp;
   const settingsItems: Electron.MenuItemConstructorOptions[] = [
     { label: text.hideBrowser, toolTip: text.hideBrowserHint, type: "checkbox", checked: settings.hideBrowser, click: (item) => void setHideBrowser(item.checked) },
+    { label: text.updateCheck, toolTip: text.updateCheckHint, type: "checkbox", checked: settings.updateCheck, click: (item) => void setUpdateCheck(item.checked) },
     { label: isKo() ? "서버 주소 바꾸기…" : "Change server address…", click: () => showChangeServer() },
     { label: isKo() ? "사이드 브라우저 데이터 지우기…" : "Clear side browser data…", click: () => void confirmClearSideBrowser() },
   ];
@@ -433,6 +457,11 @@ function registerIpc(): void {
   handle("setup:cancel", fromSetup, () => showHome());
   handle("app:getHideBrowser", fromServer, () => settings.hideBrowser);
   handle("app:setHideBrowser", fromServer, (value) => (typeof value === "boolean" ? setHideBrowser(value) : settings.hideBrowser));
+  handle("update:state", fromServer, () => (settings.updateCheck ? availableUpdate : null));
+  handle("update:getEnabled", fromServer, () => settings.updateCheck);
+  handle("update:setEnabled", fromServer, (value) => (typeof value === "boolean" ? setUpdateCheck(value) : settings.updateCheck));
+  // Opens only the release page found by the check (never a URL from the page).
+  handle("update:open", fromServer, () => (availableUpdate ? shell.openExternal(availableUpdate.url) : undefined));
 }
 
 // --- Stage 6 MCP (contract sections 5 and 6) ------------------------------------------------------------------
@@ -568,6 +597,7 @@ if (process.argv.includes("--defe2end-browser-check")) {
     buildMenu();
     if (settings.serverOrigin) await loadAuthOrigins(settings.serverOrigin);
     createWindow();
+    scheduleUpdateChecks(() => settings.updateCheck, runUpdateCheck);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

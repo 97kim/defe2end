@@ -1,2 +1,4 @@
 # Bundled headless Chromium, fetched at package time (scripts/fetch-browsers.mjs)
 browsers/
+# SBOM and notices written by scripts/app-licenses.sh for release builds
+licenses/

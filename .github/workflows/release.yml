@@ -1,0 +1,314 @@
+name: Release
+
+# Two steps (stage 8 contract section 1):
+#  1. Push a tag vX.Y.Z or vX.Y.Z-rc.N (on a commit in main). Tests run, the three server images go to the
+#     registry under sha-<commit> only, the desktop installers are built, SBOMs, notices, checksums and
+#     provenance are made, and a draft release lists every image digest. No version tag is public yet.
+#  2. After checking the draft, run this workflow by hand with the version: the same digests get the version tag
+#     and the release is published. Version tags are never overwritten.
+# Images are published as ghcr.io/97kim/defe2end-*; a fork changes IMAGE_PREFIX (and deploy/docker-compose.yml).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (X.Y.Z or X.Y.Z-rc.N, without the v)
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  TURBO_TELEMETRY_DISABLED: "1"
+  IMAGE_PREFIX: ghcr.io/97kim/defe2end
+
+jobs:
+  # ---- Step 1: tag push ------------------------------------------------------------------------------------
+
+  prepare:
+    name: Check the tag
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: tag
+        run: node scripts/stamp-version.mjs --check "$GITHUB_REF_NAME"
+      - name: The tagged commit is in main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: No release or image of this version yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "release v$VERSION already exists" >&2; exit 1; fi
+          for name in web worker migrate; do
+            if docker manifest inspect "$IMAGE_PREFIX-$name:$VERSION" >/dev/null 2>&1; then
+              echo "$IMAGE_PREFIX-$name:$VERSION already exists" >&2; exit 1
+            fi
+          done
+
+  test:
+    name: Tests
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    secrets: inherit
+
+  images:
+    name: Image (${{ matrix.name }})
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: web
+            dockerfile: apps/web/Dockerfile
+          - name: worker
+            dockerfile: apps/worker/Dockerfile
+          - name: migrate
+            dockerfile: packages/db/Dockerfile
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+      - run: node scripts/stamp-version.mjs "$GITHUB_REF_NAME"
+      - run: sh scripts/install-syft.sh "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # SBOM and notices from the amd64 build of the final stage; also writes <Dockerfile>.release.
+      - run: sh scripts/image-licenses.sh ${{ matrix.name }} ${{ matrix.dockerfile }} "out/licenses" linux/amd64
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # No build cache: nothing from other runs (forks included) goes into a release image.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}.release
+          build-contexts: licenses=out/licenses
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: true
+          tags: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=defe2end-${{ matrix.name }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Collect release files
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p dist
+          echo "$IMAGE_PREFIX-${{ matrix.name }}@$DIGEST" > "dist/digest-${{ matrix.name }}.txt"
+          cp out/licenses/sbom.cdx.json "dist/defe2end-${{ matrix.name }}-$VERSION.cdx.json"
+          cp out/licenses/THIRD_PARTY_NOTICES.txt "dist/defe2end-${{ matrix.name }}-$VERSION-THIRD_PARTY_NOTICES.txt"
+          cp out/licenses.files.txt "dist/files-image-${{ matrix.name }}.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-${{ matrix.name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    needs: [prepare, test]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-latest
+            targets: mac-arm64 mac-x64
+          - os: windows-latest
+            targets: win-x64
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      # Unsigned on purpose (plan 1): no signing identity is looked up or used.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      CSC_LINK: ""
+      CSC_KEY_PASSWORD: ""
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/stamp-version.mjs "$GITHUB_REF_NAME"
+      - run: sh scripts/install-syft.sh "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: pnpm turbo run build --filter=@defe2end/desktop...
+      - name: Build installers with their notices
+        working-directory: apps/desktop
+        run: |
+          node scripts/fetch-browsers.mjs ${{ matrix.targets }}
+          for target in ${{ matrix.targets }}; do
+            case "$target" in
+              mac-arm64) flags=(--mac dmg --arm64); unpacked=release/mac-arm64 ;;
+              mac-x64) flags=(--mac dmg --x64); unpacked=release/mac ;;
+              win-x64) flags=(--win nsis --x64); unpacked=release/win-unpacked ;;
+            esac
+            # Unpacked first to scan what ships, then the installer with resources/licenses in it.
+            pnpm exec electron-builder "${flags[@]}" --dir --publish never
+            sh scripts/app-licenses.sh "$unpacked" "$target"
+            pnpm exec electron-builder "${flags[@]}" --publish never
+            mkdir -p ../../dist
+            cp licenses/sbom.cdx.json "../../dist/defE2End-$VERSION-$target.cdx.json"
+            cp licenses/THIRD_PARTY_NOTICES.txt "../../dist/defE2End-$VERSION-$target-THIRD_PARTY_NOTICES.txt"
+            cp "release/$target-files.txt" "../../dist/files-app-$target.txt"
+          done
+          cp release/*.dmg release/*.exe ../../dist/ 2>/dev/null || true
+          ls ../../dist
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.dmg
+            dist/*.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ runner.os }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  draft:
+    name: Draft release
+    needs: [prepare, images, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release-files
+          merge-multiple: true
+      # The release files sit in the checkout (untracked), so the check reads the notices, SBOMs, image file lists
+      # and app archive file lists along with the repository; installers are checked by name.
+      - name: Clean-room check of the release files
+        run: node scripts/cleanroom-check.mjs
+        env:
+          CLEANROOM_HASHES: ${{ secrets.CLEANROOM_HASHES }}
+      - name: Assets, checksums and notes
+        run: |
+          mkdir assets
+          cp release-files/*.dmg release-files/*.exe release-files/*.cdx.json release-files/*NOTICES.txt assets/
+          cat release-files/digest-*.txt | sort > assets/IMAGE_DIGESTS.txt
+          (cd assets && sha256sum -- * > SHA256SUMS)
+          {
+            echo "## defE2End $VERSION"
+            echo
+            echo "Server images (the version tag is added to these digests when the release is published):"
+            echo
+            echo '```'
+            cat assets/IMAGE_DIGESTS.txt
+            echo '```'
+            echo
+            echo "Set \`DEFE2END_VERSION=$VERSION\` in deploy/.env. Desktop installers are unsigned; check them against"
+            echo "SHA256SUMS and with \`gh attestation verify <file> --repo ${{ github.repository }}\` before opening."
+          } > notes.md
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease"
+          gh release create "v$VERSION" --draft --verify-tag $flags --title "defE2End $VERSION" \
+            --notes-file notes.md --generate-notes assets/*
+
+  # ---- Step 2: manual publish ------------------------------------------------------------------------------
+
+  promote:
+    name: Tag the images
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: node scripts/stamp-version.mjs --check "v$VERSION"
+      - name: The draft exists and lists the digests
+        run: |
+          test "$(gh release view "v$VERSION" --json isDraft --jq .isDraft)" = true
+          gh release download "v$VERSION" --pattern IMAGE_DIGESTS.txt --dir .
+          test "$(wc -l < IMAGE_DIGESTS.txt)" -eq 3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Add the version tag to the same digests
+        run: |
+          while read -r ref; do
+            repo="${ref%@*}"
+            if docker buildx imagetools inspect "$repo:$VERSION" >/dev/null 2>&1; then
+              echo "$repo:$VERSION already exists; version tags are never overwritten" >&2; exit 1
+            fi
+          done < IMAGE_DIGESTS.txt
+          while read -r ref; do
+            docker buildx imagetools create --tag "${ref%@*}:$VERSION" "$ref"
+          done < IMAGE_DIGESTS.txt
+
+  publish:
+    name: Publish the release
+    needs: promote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
