@@ -20,12 +20,24 @@ Back up only while `web` and `worker` are stopped. While they run, cleanup and d
 
 ```sh
 docker compose stop web worker
-mkdir -p backups/2026-10-16 && chmod 777 backups/2026-10-16   # the image runs as uid 1000
+mkdir -p -m 0700 backups/2026-10-16
+sudo chown 1000:1000 backups/2026-10-16   # the migrate image runs as uid 1000
 docker compose run --rm --no-deps -T -v "$PWD/backups/2026-10-16:/backup" migrate backup /backup
 docker compose start web worker
 ```
 
-The target folder must be empty. Copy the finished folder off the server.
+The target folder must be empty. Only uid 1000 (and root) should be able to open it: the dump holds all your data.
+
+Check the permissions after the backup. The folder should be `drwx------` and every file `-rw-------`:
+
+```sh
+sudo ls -laR backups/2026-10-16
+# if anything is wider:
+sudo find backups/2026-10-16 -type d -exec chmod 0700 {} +
+sudo find backups/2026-10-16 -type f -exec chmod 0600 {} +
+```
+
+Copy the finished folder off the server and keep the same restrictions where you store it.
 
 ## Restore into an empty install
 
@@ -43,7 +55,7 @@ Steps:
    ```sh
    docker compose up -d postgres
    ```
-3. Restore (the folder can be read-only):
+3. Put the backup folder on the new host with the same owner and permissions (`sudo chown -R 1000:1000 …`, folders `0700`, files `0600`), then restore (the folder can be mounted read-only):
    ```sh
    docker compose run --rm --no-deps -T -v "$PWD/backups/2026-10-16:/backup:ro" migrate restore /backup
    ```
