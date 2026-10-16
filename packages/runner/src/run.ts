@@ -375,7 +375,7 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       if (outcome.limit) runError = { code: "artifact_limit", message: outcome.limit.message };
 
       // A screenshot refused for masking isn't captured again as a failure screenshot (without the step's mask).
-      const refused = outcome.failure instanceof MaskingRefused;
+      const refused = outcome.maskingRefused === true;
       if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError && !refused) {
         // Try to capture the failure; record why when it can't be done (e.g. the browser died).
         try {
@@ -544,7 +544,7 @@ async function runStep(
   sawBlocked: () => boolean,
   /** One masking pass over `page` (spec 2.11). */
   maskNow: (page: Page) => Promise<unknown>,
-): Promise<{ status: StepResultStatus; attempts: number; failure?: StepFailure; limit?: ArtifactLimitError }> {
+): Promise<{ status: StepResultStatus; attempts: number; failure?: StepFailure; limit?: ArtifactLimitError; maskingRefused?: boolean }> {
   const action = ACTIONS[step.action];
   if (!action) return { status: "error", attempts: 0, failure: new StepFailure("unsupported_action", `The ${step.action} action is not supported by this runner`, {}, "error") };
 
@@ -562,6 +562,8 @@ async function runStep(
   // Optional steps run once; others get one more try after a pause (spec 2.9).
   const maxAttempts = step.optional ? 1 : STEP_MAX_ATTEMPTS;
   let failure: StepFailure | undefined;
+  // Carried apart from `failure`, so no reclassification below can drop it (no failure screenshot then).
+  let maskingRefused = false;
   let attempts = 0;
   while (attempts < maxAttempts) {
     if (attempts > 0) {
@@ -609,6 +611,8 @@ async function runStep(
       if (err instanceof ArtifactLimitError) return { status: "error", attempts, failure: new StepFailure("infra", err.message, {}, "error"), limit: err };
       if (err instanceof StepWarning) return { status: "warning", attempts, failure: new StepFailure("warning", err.message) };
       failure = classify(err);
+      maskingRefused = err instanceof MaskingRefused;
+      if (maskingRefused) continue;
       // A navigation that failed because a request in it (e.g. a redirect target) was blocked: a safety block,
       // so neither retried nor turned into `skipped` by optional.
       if (failure.status === "failed" && !failure.code && sawBlocked()) failure = new StepFailure("blocked_request", failure.message);
@@ -621,9 +625,9 @@ async function runStep(
   }
   // Optional: an action failure becomes `skipped`; safety blocks and infrastructure stay what they are.
   if (step.optional && failure && failure.status === "failed" && failure.code !== "blocked_request") {
-    return { status: "skipped", attempts, failure: new StepFailure(failure.code, `[optional] ${failure.message}`, failure.detail) };
+    return { status: "skipped", attempts, failure: new StepFailure(failure.code, `[optional] ${failure.message}`, failure.detail), ...(maskingRefused ? { maskingRefused } : {}) };
   }
-  return { status: failure!.status, attempts, failure };
+  return { status: failure!.status, attempts, failure, ...(maskingRefused ? { maskingRefused } : {}) };
 }
 
 async function settle(session: RunSession): Promise<void> {

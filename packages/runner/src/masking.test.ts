@@ -60,6 +60,15 @@ describe("masking in screenshots", () => {
     expect(logs.some((l) => l.startsWith('Screenshot "masked" not collected: masking could not be applied'))).toBe(true);
   });
 
+  it("keeps the refusal when a request was blocked during the screenshot step", async () => {
+    const { files, results, logs } = await execute(makePlan(fixtures.url, [{ id: "open", action: "goto", url: "/mask-blocked.html" }, later, { ...shot, mask: "div[" }]), { masking: SETTINGS });
+    expect(logs.some((l) => l.includes("Blocked request"))).toBe(true);
+    expect(results[2]!.status).toBe("failed");
+    expect(results[2]!.errorCode).toBeUndefined();
+    expect(results[2]!.errorMessage).toBe("Masking could not be applied, so the screenshot was not taken");
+    expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
+  });
+
   it("skips the failure screenshot when masking can't be applied", async () => {
     const { files, results } = await execute(
       makePlan(fixtures.url, [open, { id: "bad", action: "assertText", selector: "#email", expected: "nope", timeout: 300 }]),
