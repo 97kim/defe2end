@@ -13,7 +13,28 @@ import { SparklesIcon } from "../run-ui";
 // Failure diagnosis (stage 6 contract section 8): only inside the desktop app. Consent once, the exact masked text
 // to review each time, one tool-less turn on the user's CLI, then the result is saved apart from the step errors.
 
-const CONSENT_KEY = "defe2end.ai.diagnosisConsent";
+const CONSENT_URL = "/api/account/ai-diagnosis-consent";
+/** Where the consent lived before it moved to the server; read once, moved, then removed. */
+const LEGACY_CONSENT_KEY = "defe2end.ai.diagnosisConsent";
+
+async function recordConsent(): Promise<boolean> {
+  const res = await fetch(CONSENT_URL, { method: "POST" }).catch(() => null);
+  return !!res?.ok;
+}
+
+/** The user's consent on the server, moving a browser-only one there first. Any failure counts as "not yet". */
+async function hasConsent(): Promise<boolean> {
+  const res = await fetch(CONSENT_URL).catch(() => null);
+  if (!res?.ok) return false;
+  const { consentedAt } = (await res.json().catch(() => ({}))) as { consentedAt?: string | null };
+  if (consentedAt) {
+    localStorage.removeItem(LEGACY_CONSENT_KEY);
+    return true;
+  }
+  if (localStorage.getItem(LEGACY_CONSENT_KEY) !== "1" || !(await recordConsent())) return false;
+  localStorage.removeItem(LEGACY_CONSENT_KEY);
+  return true;
+}
 
 async function artifactText(url: string): Promise<string | null> {
   const res = await fetch(url).catch(() => null);
@@ -88,8 +109,8 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
   }
 
   async function review() {
-    if (localStorage.getItem(CONSENT_KEY) !== "1") return setConsentOpen(true);
     setError(null);
+    if (!(await hasConsent())) return setConsentOpen(true);
     setPreparing(true);
     setPrompt(await preparePrompt(run, attempt).catch(() => null));
     setPreparing(false);
@@ -189,10 +210,10 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
             </Button>
             <Button
               type="button"
-              onClick={() => {
-                localStorage.setItem(CONSENT_KEY, "1");
+              onClick={async () => {
                 setConsentOpen(false);
-                void review();
+                if (await recordConsent()) void review();
+                else setError(t("diagnosis.consent.saveFailed"));
               }}
             >
               {t("diagnosis.consent.accept")}

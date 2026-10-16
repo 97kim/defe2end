@@ -42,8 +42,9 @@ export const INSTANCE_ACTIONS = ["workspace.create", "user.list", "user.resetLin
 /**
  * Allowed to every active user, on the instance (no workspace). Disabled users never get an `Actor`.
  * `desktop.connect`: exchange a desktop token and open the stream (stage 4 contract section 3).
+ * `account.write`: read and change one's own account settings (e.g. the AI diagnosis consent). The caller scopes to itself.
  */
-export const USER_ACTIONS = ["desktop.connect"] as const;
+export const USER_ACTIONS = ["desktop.connect", "account.write"] as const;
 
 export type WorkspaceAction = keyof typeof WORKSPACE_ACTIONS;
 export type InstanceAction = (typeof INSTANCE_ACTIONS)[number];

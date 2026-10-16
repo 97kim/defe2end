@@ -32,6 +32,7 @@ const WORKSPACE_TABLE: Record<Action, [Decision, Decision, Decision, Decision]> 
   "user.disable": [F, F, F, F],
   // User actions are never allowed against a workspace resource either.
   "desktop.connect": [F, F, F, F],
+  "account.write": [F, F, F, F],
 };
 
 // Instance resource (no workspaceId): [regular user, instance admin].
@@ -56,6 +57,7 @@ const INSTANCE_TABLE: Record<Action, [Decision, Decision]> = {
   "user.disable": [F, A],
   // Every active user.
   "desktop.connect": [A, A],
+  "account.write": [A, A],
 };
 
 function actor(who: Who, isInstanceAdmin: boolean): Actor {
