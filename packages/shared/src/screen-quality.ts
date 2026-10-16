@@ -75,6 +75,18 @@ export function renderConditionDiff(a: RenderConditions, b: RenderConditions): (
   return out;
 }
 
+/**
+ * Masking settings of one run, fixed in the run snapshot and sent to the app (section 5). `enabled` is the
+ * scenario switch: off turns site selectors and automatic detection off, never field or step masks.
+ */
+export const maskingSettingsSchema = z.strictObject({
+  enabled: z.boolean(),
+  /** The site's selector list, already split. */
+  selectors: z.array(z.string()),
+  policyVersion: z.number().int().min(1),
+});
+export type MaskingSettings = z.infer<typeof maskingSettingsSchema>;
+
 // --- Mask selector lists (section 5, selector validation) ----------------------------
 
 /**
