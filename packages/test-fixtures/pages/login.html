@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log in</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/shop.js"></script>
+</head>
+<body>
+<h1>Log in</h1>
+<form id="login-form">
+  <label>Username <input name="username" data-testid="username" autocomplete="username"></label>
+  <label>Password <input name="password" type="password" data-testid="password" autocomplete="current-password"></label>
+  <button type="submit" data-testid="login-submit">Log in</button>
+</form>
+<p id="login-error" class="error" role="alert" hidden>Invalid username or password.</p>
+<script>
+  document.getElementById("login-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    if (form.get("username") === VALID_USER.username && form.get("password") === VALID_USER.password) {
+      sessionStorage.setItem("user", VALID_USER.username);
+      location.href = "/products.html";
+    } else {
+      document.getElementById("login-error").hidden = false;
+    }
+  });
+</script>
+</body>
+</html>

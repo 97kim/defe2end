@@ -1,0 +1,37 @@
+{
+  "steps": {
+    "startPage": "Start page",
+    "finalScreen": "Final screen",
+    "quoted": "\"{text}\"",
+    "element": "element",
+    "field": "field",
+    "option": "option",
+    "password": "password",
+    "click": "Click {target}",
+    "fill": "Fill {target}",
+    "select": "Select {target}",
+    "pressEnter": "Press Enter",
+    "hover": "Hover {target}",
+    "waitFor": "Wait for {target}",
+    "checkVisible": "Check visible {target}",
+    "checkVisibleOrWarn": "Check visible (warn only) {target}",
+    "checkText": "Check text {target}",
+    "waitForUrl": "Wait for {path}",
+    "checkUrl": "Check URL {path}",
+    "scrollBottom": "Scroll to bottom",
+    "scrollTop": "Scroll to top",
+    "scrollBy": "Scroll {px}px",
+    "checkPopupUrl": "Check new window URL",
+    "closePopup": "Close new window",
+    "conditional": "{name} (conditional)",
+    "accept": "{name} + accept",
+    "dismiss": "{name} + dismiss",
+    "newWindow": "{name} + new window"
+  },
+  "menu": {
+    "checkVisible": "Check visible",
+    "checkVisibleOrWarn": "Check visible (warn only)",
+    "checkText": "Check text",
+    "hover": "Hover"
+  }
+}

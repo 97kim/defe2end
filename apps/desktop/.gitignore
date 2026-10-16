@@ -1,0 +1,2 @@
+# Bundled headless Chromium, fetched at package time (scripts/fetch-browsers.mjs)
+browsers/

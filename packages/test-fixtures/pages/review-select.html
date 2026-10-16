@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head><title>Select</title></head>
+<body>
+<select id="aria" aria-disabled="true" onchange="document.title='aria-' + this.value"><option value="a">A</option><option value="b">B</option></select>
+<select id="group" onchange="document.title='group-' + this.value"><option value="a">A</option><optgroup label="Off" disabled><option value="g">G</option></optgroup></select>
+<select id="zero" style="width:0;height:0;padding:0;border:0" onchange="document.title='zero-' + this.value"><option value="a">A</option><option value="b">B</option></select>
+<select id="hidden" style="visibility:hidden" onchange="document.title='hidden-' + this.value"><option value="a">A</option><option value="b">B</option></select>
+<label>Fruit <span id="label-child">pick</span> <select id="labelled" onchange="document.title='labelled-' + this.value"><option value="a">A</option><option value="b">B</option></select></label>
+<select id="norm" onchange="document.title='norm-' + this.value"><option value="a">A</option><option value="r">Re&#x200B;d Ap&shy;ple</option></select>
+<select id="later" onchange="document.title='later-' + this.value"><option value="a">A</option><option value="w" disabled>Wait</option></select>
+<select id="stuck" onchange="document.title='stuck-' + this.value"><option value="a">A</option><option value="w" disabled>Wait</option></select>
+<button id="ok200" onclick="setTimeout(() => fetch('/api/status?code=200&tag=num'), 1000)">OK</button>
+<script>setTimeout(() => (document.querySelector("#later option[value=w]").disabled = false), 1000);</script>
+</body>
+</html>

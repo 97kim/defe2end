@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Service worker</title></head>
+<body>
+<h1>Service worker</h1>
+<!-- The runner blocks service workers: they could answer requests outside the block rules. -->
+<p id="sw-result">pending</p>
+<script>
+  const out = document.getElementById("sw-result");
+  if (!("serviceWorker" in navigator)) out.textContent = "unavailable";
+  else navigator.serviceWorker.register("/sw.js").then(() => (out.textContent = "registered"), (err) => (out.textContent = `refused: ${err.name}`));
+</script>
+</body>
+</html>

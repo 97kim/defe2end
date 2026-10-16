@@ -1,0 +1,22 @@
+# Disposable Postgres for integration tests (data lives in tmpfs and is gone on `down`).
+# Usage: docker compose -f deploy/docker-compose.test.yml up -d --wait
+#        TEST_DATABASE_URL=postgresql://defe2end:test@localhost:54329/defe2end_test pnpm test
+
+name: defe2end-test
+
+services:
+  postgres-test:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: defe2end
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: defe2end_test
+    ports:
+      - "127.0.0.1:54329:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U defe2end -d defe2end_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Squirrel.Windows installer helper pulled in by electron-builder; we ship NSIS only.
+allowBuilds:
+  electron-winstaller: false
+  # Prisma CLI fetches its schema engine (needed by `prisma migrate`).
+  "@prisma/engines": true
+  prisma: true
+  # next-intl's extractor tooling; prebuilt platform binaries are used instead.
+  "@parcel/watcher": false
+  "@swc/core": false
+  # Desktop preload bundler; its platform binary comes from the @esbuild/* optional packages.
+  esbuild: false

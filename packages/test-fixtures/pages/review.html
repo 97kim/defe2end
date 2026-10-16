@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<title>Review</title>
+<script type="application/ld+json">{"@type":"Product","name":null,"price":1.0,"big":1e21,"tiny":0.0000001,"flag":true}</script>
+</head>
+<body>
+<section aria-label="Cart extra">
+  <button onclick="document.title='wrong-region'">Buy</button>
+  <input type="checkbox" onchange="document.title='wrong-check'">
+</section>
+<section aria-label="Cart">
+  <button onclick="document.title='right-region'">Buy</button>
+  <input type="checkbox" onchange="document.title='right-check'">
+</section>
+
+<select id="late" onchange="document.title='picked-' + this.value"><option value="a">A</option></select>
+<script>
+  setTimeout(() => {
+    const late = document.getElementById("late");
+    late.insertAdjacentHTML("beforeend", '<option value="x">  Big   Box </option><option value="Big   Box">other</option>');
+  }, 2500);
+</script>
+
+<button id="resp" onclick="window.open('/review-popup.html'); setTimeout(() => fetch('/api/status?code=201&tag=resp'), 4000)">Responses</button>
+
+<button onclick="document.title='go-clicked'">Go</button>
+<button class="cfe" style="color:rgb(0, 0, 255)" onclick="document.title='cfe-blue'">Blue</button>
+
+<input type="file" id="hidden-file" style="display:none" onchange="document.title='hidden-' + this.files.length">
+<input type="file" class="multi" style="display:none" onchange="document.title='multi-hidden'">
+<input type="file" class="multi" onchange="document.title='multi-visible'">
+
+<section aria-label="Pair">
+  <button onclick="document.title='pair-named'">Named</button>
+  <button onclick="document.title='pair-unnamed'"></button>
+</section>
+
+<select id="shift" disabled onchange="document.title='shift-' + this.value"><option value="a">A</option><option value="want">Want</option></select>
+<button id="arm" onclick="setTimeout(() => {
+  const shift = document.getElementById('shift');
+  shift.insertAdjacentHTML('afterbegin', '<option value=new>New</option>');
+  shift.disabled = false;
+}, 1500)">Arm</button>
+
+<input id="keys" onkeydown="document.title='key-' + event.key">
+
+<p id="literal">{{constructor}}</p>
+<button id="prompt" onclick="document.title = 'prompt[' + prompt('Name?') + ']'">Prompt</button>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{
+  "app": {
+    "name": "defE2End",
+    "tagline": "Self-hosted E2E regression testing for your web flows."
+  },
+  "nav": {
+    "workspace": "Workspace",
+    "dashboard": "Dashboard",
+    "scenarios": "Scenarios",
+    "runs": "Runs",
+    "comparisons": "Comparisons",
+    "schedules": "Schedules",
+    "settings": "Settings"
+  },
+  "common": {
+    "loading": "Loading…",
+    "empty": "Nothing here yet.",
+    "retry": "Try again"
+  },
+  "dialog": {
+    "close": "Close"
+  },
+  "toast": {
+    "dismiss": "Dismiss"
+  },
+  "unsaved": {
+    "title": "Unsaved changes",
+    "body": "This scenario has changes you haven't saved. Save them before you continue?",
+    "save": "Save and continue",
+    "discard": "Discard",
+    "cancel": "Cancel"
+  },
+  "roles": {
+    "ADMIN": "Admin",
+    "EDITOR": "Editor",
+    "VIEWER": "Viewer"
+  },
+  "shell": {
+    "switchWorkspace": "Switch workspace",
+    "members": "{count, plural, one {# member} other {# members}}",
+    "signOut": "Sign out",
+    "userMenu": "Account menu",
+    "placeholder": "This page is coming in a later stage."
+  },
+  "login": {
+    "title": "Sign in to defE2End",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "or": "or",
+    "continueWith": "Continue with {provider}",
+    "invalid": "Email or password is incorrect.",
+    "rateLimited": "Too many attempts. Wait a minute and try again.",
+    "failed": "Couldn't sign in. Try again."
+  },
+  "setup": {
+    "title": "Set up defE2End",
+    "description": "Create the first administrator and workspace. The install token was printed in the web server log.",
+    "token": "Install token",
+    "name": "Your name",
+    "email": "Email",
+    "password": "Password (at least 8 characters)",
+    "workspaceName": "Workspace name",
+    "submit": "Create administrator",
+    "invalidToken": "The install token is invalid or has already been used.",
+    "failed": "Setup failed. Check the values and try again."
+  },
+  "errors": {
+    "notFoundCode": "404 · NOT FOUND",
+    "notFoundTitle": "This page doesn't exist or you don't have access",
+    "notFoundBody": "The link may be wrong, or it points to a workspace you're not a member of. Ask a workspace admin to invite you, or open a workspace you can access.",
+    "forbiddenCode": "403 · ACCESS DENIED",
+    "forbiddenTitle": "You don't have permission to do this",
+    "forbiddenBody": "Your role in this workspace doesn't allow this action. Ask a workspace admin to change your role.",
+    "backHome": "Back to home",
+    "workspacesYouCanOpen": "Workspaces you can open",
+    "noWorkspaces": "You're not a member of any workspace yet. Ask an administrator to invite you."
+  }
+}

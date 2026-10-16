@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Open popup</title></head>
+<body>
+<h1>Open popup</h1>
+<!-- Opens a popup at ?to=<url>, and a popup with an image from there. -->
+<button id="open" type="button">Open</button>
+<script>
+  const to = new URLSearchParams(location.search).get("to");
+  document.getElementById("open").addEventListener("click", () => open(to, "_blank"));
+</script>
+</body>
+</html>

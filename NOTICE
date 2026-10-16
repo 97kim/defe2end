@@ -1,0 +1,20 @@
+defE2End
+Copyright 2026 The defE2End Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party components and their licenses are listed in each release's
+software bill of materials (SBOM) and third-party notices.
+
+Third-party: transitions.dev CSS transitions
+  Source: https://github.com/Jakubantalik/transitions.dev (free transitions, via `npx transitions-dev add`)
+  Used in: apps/web/app/transitions/transitions.css (adapted: shorter durations, no overshoot)
+  License: not MIT. Commercial use and distribution as part of this product are permitted;
+  redistributing the transitions as (part of) a competing transition library is not.
+
+Third-party: fonts (SIL Open Font License 1.1)
+  Geist and Geist Mono — Copyright (c) 2023 Vercel, in collaboration with basement.studio.
+    Source: npm package `geist` 1.7.2 (https://github.com/vercel/geist-font).
+    Files: apps/web/app/fonts/Geist-Variable.woff2, GeistMono-Variable.woff2; license apps/web/app/fonts/OFL-Geist.txt
+  IBM Plex Sans KR (400, 600) — Copyright 2018 IBM Corp.
+    Source: npm package `@fontsource/ibm-plex-sans-kr` 5.3.0 (https://github.com/IBM/plex), unicode-range slices.
+    Files: apps/web/public/fonts/ibm-plex-sans-kr/; license apps/web/public/fonts/ibm-plex-sans-kr/OFL.txt

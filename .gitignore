@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.next/
+.next-*/
+out/
+release/
+coverage/
+.turbo/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+# clean-room term list and its hashes stay local (hashes of short words can be reversed); CI gets the
+# hashes from the CLEANROOM_HASHES secret
+scripts/cleanroom-words.local.txt
+scripts/cleanroom-hashes.local.txt
+
+# design: keep only the final exported screens; .pen sources and explorations stay local
+design/*.pen
+design/export/*
+!design/export/ap-*.png
+!design/export/ds-*.png
+!design/export/s-*.png
+!design/export/k-*.png

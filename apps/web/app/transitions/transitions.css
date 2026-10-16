@@ -1,0 +1,287 @@
+/*
+ * UI transitions, adapted from transitions.dev — https://github.com/Jakubantalik/transitions.dev
+ * (free tier, added with `npx transitions-dev add <name>`): text-states-swap, number-pop-in, card-resize,
+ * modal, menu-dropdown, panel-reveal, success-check, error-state-shake, toast.
+ *
+ * License: the transitions.dev CSS is NOT MIT. Commercial use and distribution inside a product are allowed;
+ * redistributing it as (part of) a competing transition library is not. Keep this notice with the file.
+ * Also listed in the repository's NOTICE.
+ *
+ * Changes for A′ Ink (a calm tool UI): every duration and easing reads from the four motion tokens below,
+ * so motions of the same kind match; durations 250–650ms (2026-10-13 tuned up after review: the first 120–220ms draft was too faint), and the
+ * overshooting curves (number pop-in, check bob) replaced with the plain ease-out — no bounce. Enter
+ * animations use `@starting-style`/keyframes so React mount alone triggers them (no JS phases). Every
+ * effect keeps the library's `prefers-reduced-motion` guard.
+ */
+
+:root {
+  /* Exits, closes, small swaps. */
+  --motion-fast: 250ms;
+  /* Opens, enters, number and status changes. */
+  --motion-base: 500ms;
+  /* Larger surfaces: panels, size changes. */
+  --motion-slow: 650ms;
+  /* The library's ease-out, no overshoot. */
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-blur: 6px;
+}
+
+/* --- text-states-swap: a status label re-entering after it changed (keyed remount) --- */
+@keyframes t-text-swap-in {
+  from {
+    transform: translateY(10px);
+    filter: blur(var(--motion-blur));
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+.t-text-swap {
+  display: inline-block;
+}
+.t-text-swap.is-entering {
+  animation: t-text-swap-in var(--motion-base) var(--motion-ease) both;
+}
+
+/* --- number-pop-in: a counter digit group re-entering from below --- */
+@keyframes t-digit-pop-in {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+    filter: blur(var(--motion-blur));
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit-group.is-animating {
+  animation: t-digit-pop-in var(--motion-base) var(--motion-ease) both;
+}
+
+/* --- card-resize: height/width tween; `interpolate-size` lets `auto` sizes tween where supported --- */
+.t-resize {
+  interpolate-size: allow-keywords;
+  transition:
+    width var(--motion-slow) var(--motion-ease),
+    height var(--motion-slow) var(--motion-ease);
+}
+
+/* --- modal: native <dialog> scales in from 0.98 when opened --- */
+.t-modal[open] {
+  transform: scale(1);
+  opacity: 1;
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    opacity var(--motion-base) var(--motion-ease);
+}
+@starting-style {
+  .t-modal[open] {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+
+/* --- menu-dropdown: popover grows from its trigger corner --- */
+.t-dropdown {
+  transform-origin: top right;
+  transform: scale(1);
+  opacity: 1;
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    opacity var(--motion-base) var(--motion-ease);
+}
+.t-dropdown[data-origin="top-left"] {
+  transform-origin: top left;
+}
+@starting-style {
+  .t-dropdown {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+
+/* --- panel-reveal: the recording panel and items stacking into its list --- */
+.t-panel-slide {
+  transform: translateY(0);
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    transform var(--motion-slow) var(--motion-ease),
+    opacity var(--motion-slow) var(--motion-ease),
+    filter var(--motion-slow) var(--motion-ease);
+}
+@starting-style {
+  .t-panel-slide {
+    transform: translateY(28px);
+    opacity: 0;
+    filter: blur(var(--motion-blur));
+  }
+}
+@keyframes t-stack-in {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.t-stack-in {
+  animation: t-stack-in var(--motion-base) var(--motion-ease) both;
+}
+
+/* --- success-check: the check after a save (fade + small rotate + stroke draw, no bob) --- */
+.t-success-check {
+  display: inline-flex;
+  transform-origin: center;
+}
+.t-success-check svg {
+  display: block;
+  overflow: visible;
+}
+.t-success-check[data-state="in"] {
+  animation:
+    t-check-fade var(--motion-slow) var(--motion-ease) both,
+    t-check-rotate var(--motion-slow) var(--motion-ease) both;
+}
+.t-success-check[data-state="in"] svg path {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  animation: t-check-draw var(--motion-slow) var(--motion-ease) 40ms forwards;
+}
+@keyframes t-check-fade {
+  from {
+    opacity: 0;
+    filter: blur(var(--motion-blur));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+@keyframes t-check-rotate {
+  from {
+    transform: rotate(30deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+@keyframes t-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* --- error-state-shake: a field whose error just appeared (4 legs, 180ms total) --- */
+.t-input.is-shaking {
+  animation: t-input-shake var(--motion-base) linear;
+}
+@keyframes t-input-shake {
+  0% {
+    transform: translateX(0);
+    animation-timing-function: var(--motion-ease);
+  }
+  28.57% {
+    transform: translateX(8px);
+    animation-timing-function: var(--motion-ease);
+  }
+  57.14% {
+    transform: translateX(-8px);
+    animation-timing-function: var(--motion-ease);
+  }
+  78.57% {
+    transform: translateX(4px);
+    animation-timing-function: var(--motion-ease);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* --- toast: rises in from below --- */
+.t-toast {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition:
+    opacity var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease),
+    filter var(--motion-base) var(--motion-ease);
+}
+@starting-style {
+  .t-toast {
+    opacity: 0;
+    transform: translateY(20px) scale(0.94);
+    filter: blur(var(--motion-blur));
+  }
+}
+
+/* The library's guard, kept for every effect. */
+@media (prefers-reduced-motion: reduce) {
+  .t-text-swap,
+  .t-digit-group,
+  .t-stack-in,
+  .t-input,
+  .t-success-check,
+  .t-success-check svg path {
+    animation: none !important;
+  }
+  .t-success-check svg path {
+    stroke-dashoffset: 0 !important;
+  }
+  .t-resize,
+  .t-modal,
+  .t-dropdown,
+  .t-panel-slide,
+  .t-toast {
+    transition: none !important;
+  }
+}
+
+/* --- close transitions: a fading copy left by ghost-out.ts when a dialog, menu or toast unmounts --- */
+@keyframes t-ghost-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+@keyframes t-ghost-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.t-ghost {
+  pointer-events: none;
+  z-index: 60;
+  animation: t-ghost-out var(--motion-fast) var(--motion-ease) forwards;
+}
+.t-ghost-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: color-mix(in srgb, var(--color-text-primary) 30%, transparent);
+  animation-name: t-ghost-scrim-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-ghost {
+    display: none;
+  }
+}

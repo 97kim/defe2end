@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Products</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/shop.js"></script>
+</head>
+<body>
+<h1>Products</h1>
+<p id="greeting"></p>
+<ul id="product-list" data-testid="product-list"></ul>
+<script>
+  const user = sessionStorage.getItem("user");
+  if (user) document.getElementById("greeting").textContent = `Signed in as ${user}`;
+  document.getElementById("product-list").innerHTML = PRODUCTS.map(
+    (p) => `<li data-testid="product-${p.id}"><a href="/product.html?id=${p.id}">${p.name}</a> — $${p.price}</li>`,
+  ).join("");
+</script>
+</body>
+</html>

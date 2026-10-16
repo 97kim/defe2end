@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<title>Parity Shop</title>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Product","name":"Red shoe","offers":[{"price":10}]}]}</script>
+<script type="application/ld+json">{ broken</script>
+</head>
+<body>
+<button onclick="document.title='clicked-add'">Add</button>
+<button onclick="document.title='clicked-add-to-cart'">Add to cart</button>
+<button style="display:none" class="dup">Dup</button>
+<button class="dup" onclick="document.title='dup-visible'">Dup</button>
+<button class="cfe" disabled onclick="document.title='cfe-1'">C1</button>
+<button class="cfe" style="background-color:#ff0000" onclick="document.title='cfe-2'">C2</button>
+<button class="cfe" style="background-color:#000000" onclick="document.title='cfe-3'">C3</button>
+<p id="text">Hello   World</p>
+<meta name="description" content="x">
+<button id="alert" onclick="alert('Saved!')">Alert</button>
+<button id="confirm" onclick="document.title = confirm('Sure?') ? 'yes' : 'no'">Confirm</button>
+<button id="prompt" onclick="document.title = 'hi ' + prompt('Name?')">Prompt</button>
+<button id="nodialog">Nothing</button>
+<a id="pop" href="/parity.html?popup=1" target="_blank">Open</a>
+<input type="file" id="file" multiple onchange="document.title = Array.from(this.files).map(f => f.name + ':' + f.type).join(',')">
+<iframe id="outer" srcdoc="<iframe id='inner' srcdoc='<button>Deep</button><button class=two>a</button><button class=two>b</button>'></iframe>"></iframe>
+<div style="height:3000px"></div>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recorder</title>
+<style>
+  #banner { position: fixed; bottom: 0; z-index: 1000; }
+  #low { position: fixed; top: 0; z-index: 999; }
+</style>
+</head>
+<body>
+<!-- Selector candidates for the recorder (desktop spec 5.2). -->
+<button id="buy" data-testid="buy-button" data-track="buy" class="btn btn-primary is-active">Buy now</button>
+<button id="order-123456" class="btn">Order</button>
+<a id="a1" href="/products.html?ref=nav#top">Products</a>
+<a href="/">Home</a>
+<a href="https://www.googleadservices.com/pagead/aclk?x=1">Ad</a>
+<a href="https://shop.test/deal?gclid=abc">Deal</a>
+<a href="javascript:void(0)" class="more-link">More</a>
+<a class="card" href="/product.html?id=1"><h3>Card title</h3><p>A long description that runs well past thirty characters</p></a>
+<button aria-label="Close (x)">x</button>
+<div class="sc-abc123 css-xyz jsx-99 a1b2c3 kXyZa bcdfg menu-item item-selected"><span id="deep">Deep text</span></div>
+<label>Email <input name="email" placeholder="you@example.com" type="email"></label>
+<input type="password" id="pw" name="pw">
+<select name="size"><option>Small</option><option>Large</option></select>
+<button class="dup">Same</button><button class="dup">Same</button>
+<div class="plain" onclick="void 0"><span id="inner">Inner click</span></div>
+<p class="long-paragraph-class">This paragraph is definitely longer than twenty-five characters</p>
+<div id="banner"><button class="close-banner">Dismiss</button></div>
+<div id="low"><button class="low-btn">Low</button></div>
+</body>
+</html>

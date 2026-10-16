@@ -1,0 +1,47 @@
+appId: dev.defe2end.desktop
+productName: defE2End
+copyright: Copyright 2026 defE2End contributors
+directories:
+  output: release
+files:
+  - dist/**/*
+  - "!dist/**/*.map"
+  # defe2end-mcp goes to resources/mcp (extraResources), not into the asar.
+  - "!dist/mcp/**"
+  - static/**/*
+  - package.json
+  # Build leftovers of the workspace packages bundled under node_modules.
+  - "!**/node_modules/**/.turbo/**"
+  - "!**/node_modules/**/src/**/*.test.*"
+  - "!**/node_modules/**/*.map"
+# Headless Chromium and ffmpeg for this platform and architecture (scripts/fetch-browsers.mjs).
+extraResources:
+  # defe2end-mcp (scripts/bundle-mcp.mjs), run by the app executable with ELECTRON_RUN_AS_NODE=1.
+  - from: dist/mcp
+    to: mcp
+    filter:
+      - defe2end-mcp.mjs
+  - from: browsers/${os}-${arch}
+    to: browsers
+    filter:
+      - "**/*"
+      - "!.links/**"
+mac:
+  # Name every file by architecture (x64 builds get no suffix by default).
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  category: public.app-category.developer-tools
+  # Unsigned on purpose (plan 1): no Developer ID, no notarization.
+  identity: null
+  notarize: false
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+win:
+  target:
+    - target: nsis
+      arch: x64
+nsis:
+  oneClick: false
+  perMachine: false

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Frames</title></head>
+<body>
+<h1>Frames</h1>
+<!-- An iframe whose document redirects; ?to=<url> is the redirect target. -->
+<iframe id="redirect-frame" title="redirect"></iframe>
+<script>
+  document.getElementById("redirect-frame").src = `/redirect?to=${encodeURIComponent(new URLSearchParams(location.search).get("to"))}`;
+</script>
+</body>
+</html>

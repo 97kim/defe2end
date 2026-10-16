@@ -1,0 +1,75 @@
+{
+  "provider": {
+    "claude": "Claude Code",
+    "codex": "Codex"
+  },
+  "status": {
+    "ready": "{provider} {version}",
+    "missing": "{provider} isn't installed on this computer.",
+    "unsupported": "{provider} {version} can't be used here: version {minVersion} or later is needed so the app can limit what it may do. Update it and check again.",
+    "install": "How to install",
+    "recheck": "Check again",
+    "checking": "Looking for AI tools…",
+    "none": "No AI tool you can use was found. Install Claude Code or Codex, then check again."
+  },
+  "error": {
+    "auth": "{provider} is signed out. Run `{command}` in a terminal, then try again.",
+    "missing": "{provider} couldn't be started. Check the installation and try again.",
+    "failed": "{provider} stopped with an error: {message}",
+    "stopped": "Stopped.",
+    "refused": {
+      "provider_unavailable": "This AI tool can't be used right now.",
+      "provider_locked": "A conversation keeps the AI tool it started with. Start a new conversation to switch.",
+      "busy": "Wait for the current answer, or stop it.",
+      "too_many_images": "Attach up to 4 images.",
+      "image_too_large": "Each image must be 6 MB or smaller.",
+      "bad_image": "Only PNG, JPEG, GIF and WebP images can be attached.",
+      "empty": "Write a message first.",
+      "too_long": "The message is too long.",
+      "unknown_provider": "Unknown AI tool.",
+      "invalid": "The request was not valid.",
+      "unsafe_cli": "This CLI version can't be used: its tool limits couldn't be confirmed.",
+      "stopped": "The request was stopped because the app's connection or account changed."
+    },
+    "unsafe": "{provider} was stopped: this CLI version showed tools the app can't allow, so it can't be used here. It stays blocked until the app restarts."
+  },
+  "chat": {
+    "open": "AI chat",
+    "close": "Close AI chat",
+    "title": "AI chat",
+    "newThread": "New conversation",
+    "threads": "Conversations",
+    "untitled": "New conversation",
+    "providerLabel": "AI tool",
+    "placeholder": "Ask about scenarios, runs or the page in the side browser",
+    "send": "Send",
+    "stop": "Stop",
+    "attach": "Attach images",
+    "removeImage": "Remove image",
+    "memoryOnly": "Conversations stay in this app's memory and are gone when it closes.",
+    "empty": "Ask the AI to read a run, explain a failure or work in the side browser. It can use defE2End tools only.",
+    "you": "You",
+    "thinking": "Thinking…",
+    "images": "{count, plural, one {# image} other {# images}} attached"
+  },
+  "diagnosis": {
+    "title": "Diagnose with AI",
+    "intro": "Sends the failed step, the steps around it, the errors, browser logs and the page structure at the failure to an AI tool on this computer. Screenshots aren't sent.",
+    "appOnly": "Open this run in the defE2End desktop app to diagnose it with AI.",
+    "nothing": "There's no failed step to diagnose.",
+    "start": "Diagnose",
+    "preview": "What will be sent",
+    "loading": "Preparing what will be sent…",
+    "running": "Diagnosing…",
+    "saved": "Saved",
+    "saveFailed": "The diagnosis couldn't be saved. It is shown here only.",
+    "history": "Earlier diagnoses",
+    "by": "{provider} · {name} · {time}",
+    "consent": {
+      "title": "Send run details to an external AI?",
+      "body": "The failed step, errors, browser logs and page structure go to the AI service behind the tool you pick (Anthropic or OpenAI). Emails, phone numbers and URL query values are hidden first, and screenshots aren't sent. You can check what is sent before each diagnosis.",
+      "accept": "Agree and continue",
+      "cancel": "Cancel"
+    }
+  }
+}

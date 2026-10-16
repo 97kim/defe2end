@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Frame</title></head>
+<body>
+<h2 id="frame-title">Inside the frame</h2>
+<input id="frame-input">
+<p id="frame-echo"></p>
+<script>
+  const input = document.getElementById("frame-input");
+  input.addEventListener("input", () => (document.getElementById("frame-echo").textContent = input.value));
+</script>
+</body>
+</html>

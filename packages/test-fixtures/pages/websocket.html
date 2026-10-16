@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>WebSocket</title></head>
+<body>
+<h1>WebSocket</h1>
+<!-- Opens a WebSocket to ?to=<url> and reports what happened. -->
+<p id="ws-result">pending</p>
+<script>
+  const out = document.getElementById("ws-result");
+  try {
+    const ws = new WebSocket(new URLSearchParams(location.search).get("to"));
+    ws.onopen = () => (out.textContent = "open");
+    ws.onclose = (e) => (out.textContent = `closed:${e.code}`);
+  } catch (err) {
+    out.textContent = `refused: ${err.name}`;
+  }
+</script>
+</body>
+</html>

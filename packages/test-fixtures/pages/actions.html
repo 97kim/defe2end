@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Actions</title>
+<style>
+  #tall { height: 3000px; }
+  #hover-target:hover + #hover-tip { display: block; }
+  #hover-tip { display: none; }
+</style>
+</head>
+<body>
+<!-- One fixture per action of the step format (stage 3 contract section 1). -->
+<h1 id="title">  Action   fixtures
+</h1>
+<p id="spaced">  Hello
+   World  </p>
+
+<button id="hover-target">Hover me</button><span id="hover-tip">Tip shown</span>
+
+<button id="counter" type="button">Clicked 0</button>
+
+<input id="name" value="prefilled">
+<input id="secret-field" type="text">
+<p id="echo"></p>
+
+<select id="size">
+  <option value="s">Small</option>
+  <option value="m">Medium</option>
+  <option value="Large">Extra large</option>
+  <option value="xl">Large</option>
+</select>
+<p id="size-result"></p>
+
+<input id="keys" placeholder="press here">
+<p id="last-key"></p>
+
+<input id="file" type="file">
+<p id="file-name"></p>
+
+<p id="delayed" hidden>Arrived</p>
+<p id="later" hidden>Later</p>
+<p id="spinner">Loading…</p>
+<ul id="items"><li>One</li><li>Two</li><li>Three</li></ul>
+<a id="cart-link" href="/cart.html" data-state="Ready">Cart</a>
+
+<button id="fetch-ok" type="button">Fetch 201</button>
+<button id="fetch-500-then-ok" type="button">Fetch 500 then 200</button>
+<button id="fetch-before" type="button">Fetch early</button>
+<button id="fetch-late" type="button">Fetch 500 then 200, late</button>
+<p id="fetch-result"></p>
+
+<button id="alert" type="button">Alert</button>
+<button id="confirm" type="button">Confirm</button>
+<button id="prompt" type="button">Prompt</button>
+<p id="dialog-result"></p>
+
+<button id="popup-one" type="button">Open one popup</button>
+<button id="popup-two" type="button">Open two popups</button>
+<a id="popup-link" href="/popup.html" target="_blank">Popup link</a>
+
+<button id="go-cart" type="button">Go to cart</button>
+
+<iframe id="frame" title="frame" src="/frame.html"></iframe>
+<div id="tall"></div>
+<p id="bottom">Bottom</p>
+<p id="scroll-y">0</p>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let clicks = 0;
+  $("counter").addEventListener("click", () => ($("counter").textContent = `Clicked ${++clicks}`));
+  $("name").addEventListener("input", () => ($("echo").textContent = $("name").value));
+  $("size").addEventListener("change", () => ($("size-result").textContent = $("size").value));
+  $("keys").addEventListener("keydown", (e) => ($("last-key").textContent = (e.ctrlKey ? "Control+" : "") + e.key));
+  $("file").addEventListener("change", () => ($("file-name").textContent = Array.from($("file").files, (f) => `${f.name}:${f.size}`).join(",")));
+  setTimeout(() => ($("delayed").hidden = false), 500);
+  setTimeout(() => ($("later").hidden = false), 1300);
+  setTimeout(() => ($("spinner").hidden = true), 500);
+  addEventListener("scroll", () => ($("scroll-y").textContent = String(Math.round(scrollY))));
+  const status = (code, delay = 0) => fetch(`/api/status?code=${code}&delay=${delay}`, { method: "POST" });
+  $("fetch-ok").addEventListener("click", () => setTimeout(() => status(201).then((r) => ($("fetch-result").textContent = String(r.status))), 200));
+  $("fetch-500-then-ok").addEventListener("click", async () => {
+    await status(500);
+    await status(200);
+  });
+  $("fetch-before").addEventListener("click", () => status(204));
+  // Late enough to land after the click step's settle wait, inside the next step.
+  $("fetch-late").addEventListener("click", () => setTimeout(async () => {
+    await status(500);
+    await status(200);
+  }, 1000));
+  $("alert").addEventListener("click", () => {
+    alert("Hello");
+    $("dialog-result").textContent = "alert closed";
+  });
+  $("confirm").addEventListener("click", () => ($("dialog-result").textContent = confirm("Sure?") ? "confirmed" : "cancelled"));
+  $("prompt").addEventListener("click", () => ($("dialog-result").textContent = `prompt:${prompt("Name?")}`));
+  $("popup-one").addEventListener("click", () => setTimeout(() => open("/popup.html", "_blank"), 300));
+  $("popup-two").addEventListener("click", () => {
+    open("/popup.html?n=1", "_blank");
+    open("/popup.html?n=2", "_blank");
+  });
+  $("go-cart").addEventListener("click", () => setTimeout(() => (location.href = "/cart.html?from=actions#top"), 200));
+</script>
+</body>
+</html>

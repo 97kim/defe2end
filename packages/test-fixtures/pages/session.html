@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session</title>
+</head>
+<body>
+<h1>Session</h1>
+<p data-testid="cookie"></p>
+<p data-testid="local"></p>
+<script>
+  document.querySelector("[data-testid=cookie]").textContent = document.cookie || "no cookie";
+  document.querySelector("[data-testid=local]").textContent = localStorage.getItem("token") ?? "no token";
+</script>
+</body>
+</html>

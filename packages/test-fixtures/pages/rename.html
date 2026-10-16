@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Renaming field</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<h1 id="title">Renaming field</h1>
+<!-- Changes its own id (and drops any data attribute) on input: the selector that filled it stops matching. -->
+<input id="token" style="width: 300px; height: 40px; font-size: 20px">
+<input id="token2" style="width: 300px; height: 40px; font-size: 20px">
+<script>
+  for (const field of [document.getElementById("token"), document.getElementById("token2")]) {
+    field.addEventListener("input", () => {
+      field.id = "token-" + Math.random().toString(36).slice(2);
+      for (const name of field.getAttributeNames()) if (name.startsWith("data-")) field.removeAttribute(name);
+    });
+  }
+</script>
+<!-- Moves itself into a closed shadow root on input: still on screen, but nothing can locate it for a mask. -->
+<div id="sealed-host"></div>
+<input id="sealed" style="width: 300px; height: 40px; font-size: 20px">
+<script>
+  const sealed = document.getElementById("sealed");
+  sealed.addEventListener("input", () => {
+    const root = document.getElementById("sealed-host").attachShadow({ mode: "closed" });
+    root.append(sealed);
+  }, { once: true });
+</script>
+</body>
+</html>

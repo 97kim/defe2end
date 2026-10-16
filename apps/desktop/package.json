@@ -1,0 +1,33 @@
+{
+  "name": "@defe2end/desktop",
+  "productName": "defE2End",
+  "version": "0.0.0",
+  "private": true,
+  "description": "defE2End desktop app",
+  "author": "defE2End contributors",
+  "license": "Apache-2.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/bundle-preloads.mjs && node scripts/bundle-mcp.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "tsc -p tsconfig.json && node scripts/bundle-preloads.mjs && node scripts/bundle-mcp.mjs && electron .",
+    "package:mac": "tsc -p tsconfig.json && node scripts/bundle-preloads.mjs && node scripts/bundle-mcp.mjs && node scripts/fetch-browsers.mjs mac-arm64 mac-x64 && electron-builder --mac --publish never",
+    "package:win": "tsc -p tsconfig.json && node scripts/bundle-preloads.mjs && node scripts/bundle-mcp.mjs && node scripts/fetch-browsers.mjs win-x64 && electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "@defe2end/mcp": "workspace:*",
+    "@types/node": "^22.20.5",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.17.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@defe2end/i18n": "workspace:*",
+    "@defe2end/recorder": "workspace:*",
+    "@defe2end/runner": "workspace:*",
+    "@defe2end/shared": "workspace:*"
+  }
+}

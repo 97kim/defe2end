@@ -1,0 +1,5 @@
+body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 40rem; }
+label { display: block; margin-top: 0.75rem; }
+button { margin-top: 1rem; }
+.error { color: #b91c1c; }
+.success { color: #15803d; }

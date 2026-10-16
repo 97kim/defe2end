@@ -1,0 +1,978 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Heartbeat {
+  id       BigInt   @id @default(autoincrement())
+  workerId String
+  at       DateTime @default(now())
+
+  @@index([workerId, at])
+}
+
+// --- Better Auth tables -------------------------------------------------------
+// Generated with `auth generate` (Better Auth CLI 1.7) and kept as generated,
+// plus our own fields/relations. Better Auth handles authentication only.
+
+model User {
+  id              String    @id
+  name            String
+  email           String
+  emailVerified   Boolean   @default(false)
+  image           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  isInstanceAdmin Boolean   @default(false)
+  disabledAt      DateTime?
+  sessions        Session[]
+  accounts        Account[]
+
+  memberships            Membership[]
+  invitesCreated         Invite[]                @relation("InviteCreatedBy")
+  resetLinks             ResetLink[]             @relation("ResetLinkUser")
+  resetLinksCreated      ResetLink[]             @relation("ResetLinkCreatedBy")
+  auditLogs              AuditLog[]
+  scenariosCreated       Scenario[]              @relation("ScenarioCreatedBy")
+  scenariosUpdated       Scenario[]              @relation("ScenarioUpdatedBy")
+  runsRequested          Run[]
+  groupRunsRequested     GroupRun[]
+  desktopDevices         DesktopDevice[]
+  desktopTokens          DesktopToken[]
+  mcpTokens              McpToken[]
+  runDiagnoses           RunDiagnosis[]
+  authSessions           AuthSession[]
+  personalVariableValues PersonalVariableValue[]
+  schedulesCreated       Schedule[]              @relation("ScheduleCreatedBy")
+  schedulesUpdated       Schedule[]              @relation("ScheduleUpdatedBy")
+  botTokensCreated       BotToken[]              @relation("BotTokenCreatedBy")
+  slackWebhooksCreated   SlackWebhook[]          @relation("SlackWebhookCreatedBy")
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+/// External identities are keyed by providerId + accountId (issuer + subject); never merged by email.
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Ours: one local identity per (issuer, subject).
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          String @id
+  key         String
+  count       Int
+  lastRequest BigInt
+
+  @@unique([key])
+  @@map("rateLimit")
+}
+
+// --- Instance -----------------------------------------------------------------
+
+/// Single row (id = 1).
+model InstanceSetting {
+  id                     Int       @id @default(1)
+  /// Set when the first admin is created.
+  installedAt            DateTime?
+  installTokenHash       String?
+  installTokenUsedAt     DateTime?
+  /// Encrypted known value; proves DEFE2END_ENCRYPTION_KEY did not change.
+  encryptionKeyCheck     String?
+  selfSignupDomains      String[]  @default([])
+  /// Recorder selector candidates, 4th priority, in this order (stage 4 contract section 7). Empty = skipped.
+  recorderTestAttributes String[]  @default([])
+}
+
+// --- Workspaces and access ------------------------------------------------------
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  /// IANA time zone for schedules and dashboard day boundaries (stage 5 contract section 2).
+  timezone  String   @default("UTC")
+  /// Language of messages sent on the workspace's behalf (Slack notifications and reports): `en` or `ko`.
+  locale    String   @default("en")
+  createdAt DateTime @default(now())
+
+  memberships   Membership[]
+  invites       Invite[]
+  auditLogs     AuditLog[]
+  sites         Site[]
+  environments  Environment[]
+  variables     Variable[]
+  scenarios     Scenario[]
+  tags          Tag[]
+  scenarioTags  ScenarioTag[]
+  runs          Run[]
+  groupRuns     GroupRun[]
+  artifacts     Artifact[]
+  attachments   Attachment[]
+  authSessions  AuthSession[]
+  schedules     Schedule[]
+  botTokens     BotToken[]
+  slackWebhooks SlackWebhook[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("InviteCreatedBy", fields: [createdById], references: [id])
+
+  @@index([workspaceId])
+}
+
+model ResetLink {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  /// Set when a newer link is issued for the same user.
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation("ResetLinkUser", fields: [userId], references: [id], onDelete: Cascade)
+  /// Null when issued from the CLI.
+  createdBy   User?     @relation("ResetLinkCreatedBy", fields: [createdById], references: [id])
+
+  @@index([userId])
+}
+
+/// `meta` must never contain secret values.
+model AuditLog {
+  id          String     @id @default(cuid())
+  workspaceId String?
+  actorId     String?
+  action      String
+  targetType  String
+  targetId    String
+  meta        Json?
+  createdAt   DateTime   @default(now())
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor       User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+// --- Workspace resources (each carries workspaceId for permission checks) -------
+
+model Site {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  environments Environment[]
+  scenarios    Scenario[]
+
+  @@unique([workspaceId, name])
+}
+
+model Environment {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  siteId         String
+  name           String
+  baseUrl        String
+  /// Runs need the requester's own valid AuthSession (stage 4 contract section 5).
+  useAuthSession Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  site           Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  variables    Variable[]
+  runs         Run[]
+  groupRuns    GroupRun[]
+  authSessions AuthSession[]
+  schedules    Schedule[]
+
+  @@unique([siteId, name])
+  @@index([workspaceId])
+}
+
+model Variable {
+  id             String                  @id @default(cuid())
+  workspaceId    String
+  environmentId  String
+  key            String
+  isSecret       Boolean                 @default(false)
+  /// `personal`: everyone sets their own value (PersonalVariableValue); `value`/`valueEncrypted` stay null.
+  scope          VariableScope           @default(shared)
+  /// Plain value; null when isSecret.
+  value          String?
+  /// `v1:<iv>:<tag>:<data>`; null when not secret or when an imported secret still needs a value.
+  valueEncrypted String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  environment    Environment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  personalValues PersonalVariableValue[]
+  scheduleValues ScheduleVariableValue[]
+  botValues      BotVariableValue[]
+
+  @@unique([environmentId, key])
+  @@index([workspaceId])
+}
+
+enum VariableScope {
+  shared
+  personal
+}
+
+/// One user's own value of a personal variable (variables contract). Only its owner ever reads it.
+model PersonalVariableValue {
+  id             String   @id @default(cuid())
+  variableId     String
+  userId         String
+  /// Plain value; null when the variable is secret.
+  value          String?
+  /// `v1:<iv>:<tag>:<data>` when the variable is secret.
+  valueEncrypted String?
+  updatedAt      DateTime @updatedAt
+  variable       Variable @relation(fields: [variableId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([variableId, userId])
+  @@index([userId])
+}
+
+model Scenario {
+  id                String        @id @default(cuid())
+  workspaceId       String
+  siteId            String
+  name              String
+  description       String        @default("")
+  steps             Json          @default("[]")
+  stepFormatVersion Int           @default(1)
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  archivedAt        DateTime?
+  /// Whole-run retry (action spec 4.3): after a `failed` attempt, run the steps once more in the same Run.
+  retryOnFailure    Boolean       @default(true)
+  /// Set when created, changed or copied over MCP: `mcp:claude`, `mcp:codex` or `mcp:unknown` (stage 6 contract section 4).
+  source            String?
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  site              Site          @relation(fields: [siteId], references: [id], onDelete: NoAction)
+  createdBy         User?         @relation("ScenarioCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?         @relation("ScenarioUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tags              ScenarioTag[]
+  runs              Run[]
+
+  @@index([workspaceId, archivedAt])
+}
+
+model Tag {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenarios   ScenarioTag[]
+  schedules   Schedule[]
+
+  @@unique([workspaceId, name])
+}
+
+model ScenarioTag {
+  workspaceId String
+  scenarioId  String
+  tagId       String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenario    Scenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([scenarioId, tagId])
+  @@index([workspaceId])
+  @@index([tagId])
+}
+
+// --- Runs (stage 3 contract section 2) ------------------------------------------
+// Lifecycle and ownership rules live in packages/db/src/runs.ts; write runs only through it
+// (and the web app's createRun). Secret values never go into any of these rows.
+
+enum RunStatus {
+  queued
+  running
+  passed
+  failed
+  error
+  cancelled
+  timed_out
+}
+
+enum RunTrigger {
+  manual
+  test
+  schedule
+  api
+}
+
+enum StepResultStatus {
+  passed
+  warning
+  failed
+  error
+  cancelled
+  timed_out
+  skipped
+}
+
+enum ArtifactKind {
+  screenshot
+  video
+  trace
+  log
+  dom_summary
+}
+
+enum GroupRunMode {
+  sequential
+  parallel
+}
+
+/// Where a run executes (stage 4 contract section 4.1). The worker only claims `server`.
+enum RunLocation {
+  server
+  desktop
+}
+
+model Run {
+  id                     String                 @id @default(cuid())
+  workspaceId            String
+  /// Null for test runs (unsaved steps) and after the scenario is deleted; `snapshot` still has it.
+  scenarioId             String?
+  /// Test runs only (scenarioId stays null): the saved scenario whose editor started it, for "last test run".
+  testOfScenarioId       String?
+  environmentId          String?
+  groupRunId             String?
+  groupIndex             Int?
+  trigger                RunTrigger
+  status                 RunStatus              @default(queued)
+  requestedById          String?
+  idempotencyKey         String?
+  /// sha256 of the request; same key + different hash → 409 idempotency_conflict.
+  requestHash            String?
+  /// `RunSnapshot` (packages/shared): scenario steps, environment, device, variable keys only.
+  snapshot               Json
+  /// `RunOptions` (packages/shared).
+  options                Json                   @default("{}")
+  runnerVersion          String?
+  browserVersion         String?
+  workerId               String?
+  /// New per claim; every worker write must present it.
+  claimToken             String?
+  /// DB time. Compared with clock_timestamp() after the row lock.
+  leaseExpiresAt         DateTime?
+  heartbeatAt            DateTime?
+  /// Cancel accepted, not yet final: the run may still end with another status.
+  cancelRequestedAt      DateTime?
+  /// Who asked to cancel: a user id, or null for the system (group stop, schedule, bot cancel). Notifications skip runs a person cancelled.
+  cancelRequestedById    String?
+  queuedAt               DateTime               @default(now())
+  startedAt              DateTime?
+  finishedAt             DateTime?
+  variablesResolvedAt    DateTime?
+  errorCode              String?
+  /// Masked.
+  errorMessage           String?
+  /// Warning steps of the final attempt (action spec 4.2). A `passed` run may have warnings.
+  warningCount           Int                    @default(0)
+  /// Attempts started so far (action spec 4.3); 0 until the first attempt starts.
+  attemptCount           Int                    @default(0)
+  /// The final attempt passed after an earlier attempt failed.
+  passedAfterRetry       Boolean                @default(false)
+  location               RunLocation            @default(server)
+  /// Set when location = desktop: the requester's device that runs it.
+  desktopDeviceId        String?
+  /// When the `run` message went out, and on which SSE connection (reconnect reconciliation, section 4.4).
+  dispatchedAt           DateTime?
+  dispatchedConnectionId String?
+  workspace              Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenario               Scenario?              @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  environment            Environment?           @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  groupRun               GroupRun?              @relation(fields: [groupRunId], references: [id], onDelete: Cascade)
+  requestedBy            User?                  @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  desktopDevice          DesktopDevice?         @relation(fields: [desktopDeviceId], references: [id], onDelete: SetNull)
+  /// Unattended origin (stage 5): the schedule or bot token that created it; requestedById is then null.
+  scheduleId             String?
+  botTokenId             String?
+  schedule               Schedule?              @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  botToken               BotToken?              @relation(fields: [botTokenId], references: [id], onDelete: SetNull)
+  notificationDeliveries NotificationDelivery[]
+  diagnoses              RunDiagnosis[]
+  apiIdempotency         ApiIdempotency[]
+  stepResults            StepResult[]
+  artifacts              Artifact[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([status, queuedAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, queuedAt])
+  @@index([scenarioId, queuedAt])
+  @@index([testOfScenarioId, queuedAt])
+  @@index([scheduleId, status])
+  @@index([groupRunId, groupIndex])
+  @@index([desktopDeviceId, status])
+}
+
+/// Text fields are masked before they are written.
+model StepResult {
+  id                String           @id @default(cuid())
+  runId             String
+  /// Whole-run attempt (action spec 4.3), from 1. `attempts` counts step retries within it.
+  attempt           Int              @default(1)
+  index             Int
+  stepId            String
+  action            String
+  status            StepResultStatus
+  attempts          Int
+  startedAt         DateTime
+  durationMs        Int
+  errorCode         String?
+  errorMessage      String?
+  expected          String?
+  actual            String?
+  /// A mutating step needed more than one attempt, so the target may have received it twice.
+  possibleDuplicate Boolean          @default(false)
+  run               Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, attempt, index])
+}
+
+model Artifact {
+  id          String       @id @default(cuid())
+  runId       String
+  workspaceId String
+  kind        ArtifactKind
+  /// Whole-run attempt the file belongs to (action spec 4.3).
+  attempt     Int          @default(1)
+  stepIndex   Int?
+  /// Display name only (e.g. the screenshot step's value); never used as a path.
+  name        String
+  /// Server-generated; see StorageDriver.
+  storageKey  String       @unique
+  contentType String
+  sizeBytes   Int
+  createdAt   DateTime     @default(now())
+  run         Run          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+model GroupRun {
+  id                     String                 @id @default(cuid())
+  workspaceId            String
+  /// Null once the environment is deleted; the children's snapshots keep it.
+  environmentId          String?
+  mode                   GroupRunMode
+  continueOnFailure      Boolean
+  requestedById          String?
+  status                 RunStatus              @default(queued)
+  /// Every child follows the group's location and device.
+  location               RunLocation            @default(server)
+  desktopDeviceId        String?
+  createdAt              DateTime               @default(now())
+  finishedAt             DateTime?
+  workspace              Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  environment            Environment?           @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  requestedBy            User?                  @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  desktopDevice          DesktopDevice?         @relation(fields: [desktopDeviceId], references: [id], onDelete: SetNull)
+  scheduleId             String?
+  botTokenId             String?
+  schedule               Schedule?              @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  botToken               BotToken?              @relation(fields: [botTokenId], references: [id], onDelete: SetNull)
+  runs                   Run[]
+  scheduleFires          ScheduleFire[]
+  notificationDeliveries NotificationDelivery[]
+  apiIdempotency         ApiIdempotency[]
+
+  @@index([workspaceId, createdAt])
+  @@index([scheduleId, status])
+}
+
+/// Files for the `upload` action. Changing one adds a new version.
+model Attachment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  version     Int
+  storageKey  String    @unique
+  contentType String
+  sizeBytes   Int
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name, version])
+}
+
+// --- Desktop app (stage 4 contract sections 3, 5 and 10) -------------------------
+
+/// Device = install × user: switching accounts on one PC makes a different device.
+model DesktopDevice {
+  id            String                 @id @default(cuid())
+  installId     String
+  userId        String
+  /// Display only (random 4 chars or a nickname, up to 40). Never the host name.
+  label         String
+  appVersion    String?
+  runnerVersion String?
+  capabilities  String[]               @default([])
+  /// The current SSE connection; streams with another id close themselves.
+  connectionId  String?
+  connectedAt   DateTime?
+  /// Online = within 45 seconds.
+  lastSeenAt    DateTime?
+  createdAt     DateTime               @default(now())
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokens        DesktopToken[]
+  mcpTokens     McpToken[]
+  runs          Run[]
+  groupRuns     GroupRun[]
+  capture       DesktopCaptureRequest?
+
+  @@unique([installId, userId])
+  @@index([userId, lastSeenAt])
+}
+
+/// A `capture-auth-state` waiting for the device's stream (stage 4 contract section 5). In the database, not
+/// process memory, so it reaches the device whichever web process holds its stream. One per device: a new
+/// request replaces the previous one.
+model DesktopCaptureRequest {
+  deviceId  String        @id
+  /// The `capture-auth-state` message.
+  message   Json
+  createdAt DateTime      @default(now())
+  device    DesktopDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model DesktopToken {
+  id         String        @id @default(cuid())
+  /// sha256 of the bearer token; the token itself is never stored.
+  tokenHash  String        @unique
+  userId     String
+  deviceId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device     DesktopDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deviceId])
+}
+
+/// A user's saved target-site login for one environment. Cookie values never go into logs; counts only.
+model AuthSession {
+  id             String      @id @default(cuid())
+  workspaceId    String
+  environmentId  String
+  /// Owner: exactly one of userId, scheduleId, botTokenId (CHECK "AuthSession_one_owner", stage 5 contract section 2).
+  userId         String?
+  scheduleId     String?
+  botTokenId     String?
+  /// Playwright storage state, `v1:<iv>:<tag>:<data>` with the install key (same as secret variables).
+  encryptedState String
+  cookieCount    Int
+  /// Plain-text size, at most 512KB.
+  sizeBytes      Int
+  savedAt        DateTime
+  /// Earlier of savedAt + 30 days and the latest expiring target-host cookie. Expired = absent.
+  expiresAt      DateTime
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  user           User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule       Schedule?   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  botToken       BotToken?   @relation(fields: [botTokenId], references: [id], onDelete: Cascade)
+
+  /// One session per environment and owner. NULLs are distinct in Postgres, so each acts as a partial unique.
+  @@unique([environmentId, userId])
+  @@unique([environmentId, scheduleId])
+  @@unique([environmentId, botTokenId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+// --- Stage 5: automation (docs/stage5-contract.md section 2) -----------------------------
+
+enum ScheduleOverlap {
+  skip
+  allow
+}
+
+enum ScheduleFireStatus {
+  started
+  skipped_overlap
+  missed
+  refused
+  error
+}
+
+enum NotifyOn {
+  failures
+  all
+  changes
+}
+
+enum NotificationKind {
+  run
+  group
+  scheduleFire
+  report
+  test
+}
+
+enum DeliveryStatus {
+  pending
+  sending
+  sent
+  failed
+  dead
+}
+
+model Schedule {
+  id                String                  @id @default(cuid())
+  workspaceId       String
+  name              String
+  environmentId     String
+  /// Targets: these scenarios (in order), or every unarchived scenario with `tagId` at fire time — one of the two.
+  scenarioIds       String[]                @default([])
+  tagId             String?
+  mode              GroupRunMode            @default(sequential)
+  continueOnFailure Boolean                 @default(true)
+  /// Five-field cron, evaluated in `timezone` (IANA).
+  cron              String
+  timezone          String
+  enabled           Boolean                 @default(true)
+  overlap           ScheduleOverlap         @default(skip)
+  /// DB time of the next fire; null while disabled.
+  nextRunAt         DateTime?
+  /// +1 on every settings change; fires record the version they used.
+  version           Int                     @default(1)
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  workspace         Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  environment       Environment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  tag               Tag?                    @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  createdBy         User?                   @relation("ScheduleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?                   @relation("ScheduleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  variableValues    ScheduleVariableValue[]
+  fires             ScheduleFire[]
+  authSessions      AuthSession[]
+  runs              Run[]
+  groupRuns         GroupRun[]
+
+  @@index([workspaceId])
+  @@index([enabled, nextRunAt])
+}
+
+/// A schedule's own value of a personal variable (secret ones only encrypted, write-only).
+model ScheduleVariableValue {
+  id             String   @id @default(cuid())
+  scheduleId     String
+  variableId     String
+  value          String?
+  valueEncrypted String?
+  updatedAt      DateTime @updatedAt
+  schedule       Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  variable       Variable @relation(fields: [variableId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, variableId])
+  @@index([variableId])
+}
+
+model ScheduleFire {
+  id                     String                 @id @default(cuid())
+  scheduleId             String
+  /// The planned time (the first one of a `missed` stretch).
+  scheduledFor           DateTime
+  status                 ScheduleFireStatus
+  /// `missed` stretches: the last planned time and how many were missed.
+  missedUntil            DateTime?
+  missedCount            Int?
+  groupRunId             String?
+  reasonCode             String?
+  scheduleVersion        Int
+  createdAt              DateTime               @default(now())
+  schedule               Schedule               @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  groupRun               GroupRun?              @relation(fields: [groupRunId], references: [id], onDelete: SetNull)
+  notificationDeliveries NotificationDelivery[]
+
+  @@unique([scheduleId, scheduledFor])
+  @@index([scheduleId, createdAt])
+}
+
+model BotToken {
+  id             String             @id @default(cuid())
+  workspaceId    String
+  name           String
+  /// sha256 of the `d2e_…` token; the token itself is shown once.
+  tokenHash      String             @unique
+  /// First 8 characters, for lists.
+  prefix         String
+  /// `runs:create`, `runs:read`, `runs:cancel`.
+  scopes         String[]
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  lastUsedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy      User?              @relation("BotTokenCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  variableValues BotVariableValue[]
+  authSessions   AuthSession[]
+  idempotency    ApiIdempotency[]
+  runs           Run[]
+  groupRuns      GroupRun[]
+
+  @@index([workspaceId])
+}
+
+/// A bot token's own value of a personal variable (secret ones only encrypted, write-only).
+model BotVariableValue {
+  id             String   @id @default(cuid())
+  botTokenId     String
+  variableId     String
+  value          String?
+  valueEncrypted String?
+  updatedAt      DateTime @updatedAt
+  botToken       BotToken @relation(fields: [botTokenId], references: [id], onDelete: Cascade)
+  variable       Variable @relation(fields: [variableId], references: [id], onDelete: Cascade)
+
+  @@unique([botTokenId, variableId])
+  @@index([variableId])
+}
+
+/// `Idempotency-Key` of `/api/v1` run creation, per token, kept 24 hours.
+model ApiIdempotency {
+  id          String    @id @default(cuid())
+  botTokenId  String
+  key         String
+  /// sha256 of the request; same key + different hash → 409 idempotency_conflict.
+  requestHash String
+  runId       String?
+  groupRunId  String?
+  createdAt   DateTime  @default(now())
+  botToken    BotToken  @relation(fields: [botTokenId], references: [id], onDelete: Cascade)
+  run         Run?      @relation(fields: [runId], references: [id], onDelete: SetNull)
+  groupRun    GroupRun? @relation(fields: [groupRunId], references: [id], onDelete: SetNull)
+
+  @@unique([botTokenId, key])
+  @@index([createdAt])
+}
+
+model SlackWebhook {
+  id             String                 @id @default(cuid())
+  workspaceId    String
+  name           String
+  /// The URL with the install key; never returned.
+  urlEncrypted   String
+  /// Last 4 characters of the URL, for display.
+  urlHint        String
+  notifyOn       NotifyOn               @default(failures)
+  /// Run origins that notify: `schedule`, `api`, `manual`.
+  sources        RunTrigger[]           @default([schedule, api])
+  dailyReport    Boolean                @default(false)
+  /// `HH:MM` in `reportTimezone`.
+  reportTime     String                 @default("09:00")
+  reportTimezone String                 @default("UTC")
+  /// Set when Slack refused it with a 4xx (other than 429).
+  invalidAt      DateTime?
+  createdById    String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy      User?                  @relation("SlackWebhookCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reportWindows  ReportWindow[]
+  deliveries     NotificationDelivery[]
+
+  @@index([workspaceId])
+}
+
+/// One daily report's fixed window `[from, to)`; unique per webhook and end so it is never made twice.
+model ReportWindow {
+  id         String               @id @default(cuid())
+  webhookId  String
+  from       DateTime
+  to         DateTime
+  deliveryId String               @unique
+  createdAt  DateTime             @default(now())
+  webhook    SlackWebhook         @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  delivery   NotificationDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([webhookId, to])
+}
+
+/// One message to one webhook, claimed by a sender like a run (claimToken + lease).
+model NotificationDelivery {
+  id             String                @id @default(cuid())
+  webhookId      String
+  kind           NotificationKind
+  runId          String?
+  groupRunId     String?
+  scheduleFireId String?
+  /// Message data, no secrets.
+  payload        Json
+  status         DeliveryStatus        @default(pending)
+  attempts       Int                   @default(0)
+  /// Filled by the app's clock; claims compare it with the DB's, so they also accept anything up to createdAt (clocks can differ).
+  nextAttemptAt  DateTime              @default(now())
+  claimToken     String?
+  leaseExpiresAt DateTime?
+  createdAt      DateTime              @default(now())
+  sentAt         DateTime?
+  webhook        SlackWebhook          @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  run            Run?                  @relation(fields: [runId], references: [id], onDelete: SetNull)
+  groupRun       GroupRun?             @relation(fields: [groupRunId], references: [id], onDelete: SetNull)
+  scheduleFire   ScheduleFire?         @relation(fields: [scheduleFireId], references: [id], onDelete: SetNull)
+  attemptRows    NotificationAttempt[]
+  reportWindow   ReportWindow?
+
+  /// One delivery per webhook and run / group / schedule fire, so a second finish call adds nothing.
+  /// NULLs never collide in Postgres, so reports and test sends (none of these set) are unaffected.
+  @@unique([webhookId, runId])
+  @@unique([webhookId, groupRunId])
+  @@unique([webhookId, scheduleFireId])
+  @@index([status, nextAttemptAt])
+  @@index([webhookId, createdAt])
+}
+
+/// Every send attempt (no URL, no values).
+model NotificationAttempt {
+  id         String               @id @default(cuid())
+  deliveryId String
+  attempt    Int
+  startedAt  DateTime             @default(now())
+  durationMs Int?
+  statusCode Int?
+  errorCode  String?
+  delivery   NotificationDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, attempt])
+}
+
+/// The desktop app's token for `/api/mcp/*` (stage 6 contract section 3): the user's own permissions, 30 days,
+/// one device. Only its sha256 is stored. A refreshed token revokes the older ones of its device on first use.
+model McpToken {
+  id         String        @id @default(cuid())
+  userId     String
+  deviceId   String
+  tokenHash  String        @unique
+  /// First characters, for lists.
+  prefix     String
+  expiresAt  DateTime
+  /// May lie up to a minute ahead: a refreshed token's predecessor keeps working that long.
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  /// `claude` or `codex`, display only.
+  clientHint String?
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device     DesktopDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deviceId])
+}
+
+/// An AI diagnosis of a failed run (stage 6 contract section 8), kept apart from the step errors.
+model RunDiagnosis {
+  id          String   @id @default(cuid())
+  runId       String
+  /// `claude` or `codex`.
+  provider    String
+  text        String
+  createdById String?
+  createdAt   DateTime @default(now())
+  run         Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([runId, createdAt])
+}

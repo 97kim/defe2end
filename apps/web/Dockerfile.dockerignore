@@ -1,0 +1,14 @@
+# Build context is the repo root; keep host build output and deps out of it.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/src/generated
+**/*.tsbuildinfo
+# Local env files (.env, .env.local, .env.production...) must never reach an image; only the example may.
+**/.env
+**/.env.*
+!**/.env.example
+.git
+design
+docs

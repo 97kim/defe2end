@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>defE2End</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>def<span class="chip">E2E</span>nd</h1>
+      <p>Enter your defE2End server address</p>
+      <form id="setup">
+        <input id="server" type="text" placeholder="https://e2e.example.com" autocomplete="url" required />
+        <button type="submit">Connect</button>
+        <button id="cancel" type="button" hidden>Cancel</button>
+      </form>
+      <p id="message" role="status"></p>
+      <small id="version"></small>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

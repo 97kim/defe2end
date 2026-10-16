@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # Run by hand to get the desktop installers as artifacts.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  check:
+    name: Typecheck, test, build, clean room
+    runs-on: ubuntu-latest
+    services:
+      # Disposable database for integration tests (apps/web/test).
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: defe2end
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: defe2end_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U defe2end -d defe2end_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgresql://defe2end:test@localhost:5432/defe2end_test
+      # Runner and worker tests drive real Chromium. Ubuntu runners block the unprivileged user namespaces
+      # its sandbox needs, so tests run it unsandboxed here; the worker image keeps the sandbox on.
+      CHROMIUM_SANDBOX: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @defe2end/runner exec playwright install --with-deps chromium
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/cleanroom-check.mjs --self-test
+      - run: node scripts/cleanroom-check.mjs
+        env:
+          CLEANROOM_HASHES: ${{ secrets.CLEANROOM_HASHES }}
+          # Pull requests from forks get no secrets; the check says it skipped instead of failing.
+          CLEANROOM_OPTIONAL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && '1' || '' }}
+      - run: node scripts/docker-context-check.mjs
+
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            package: package:mac
+            # dmg only: with the bundled Chromium, dmg + zip for both architectures went over the storage quota.
+            artifacts: apps/desktop/release/*.dmg
+          - os: windows-latest
+            package: package:win
+            artifacts: apps/desktop/release/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      # The app's dependencies (runner, recorder) test against a real Chromium.
+      - run: pnpm --filter @defe2end/runner exec playwright install chromium
+      # Only the desktop app and its dependencies: web's integration tests need the Postgres service of `check`.
+      - run: pnpm turbo run test --filter=@defe2end/desktop... --continue
+      # Build workspace dependencies first; the package script only compiles the app itself.
+      - run: pnpm turbo run build --filter=@defe2end/desktop...
+      - name: Package unsigned app
+        run: pnpm --filter @defe2end/desktop run ${{ matrix.package }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Installers are ~300MB each; uploading them on every push used up the artifact storage quota, so only a
+      # manual run uploads them. Every run still builds them.
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: desktop-${{ runner.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          # Build outputs for a quick look; releases are built separately (stage 8).
+          retention-days: 3
+
+  docker-smoke:
+    name: Docker compose smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Builds the images, checks health, the worker's Chromium sandbox and a real run through the
+      # compose stack, then tears everything down (the script makes its own throwaway secrets).
+      - run: sh apps/worker/scripts/compose-smoke.sh

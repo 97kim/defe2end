@@ -1,0 +1,6 @@
+html, body { margin: 0; background: transparent; font-family: system-ui, sans-serif; overflow: hidden; }
+.bar { display: flex; gap: 6px; align-items: center; box-sizing: border-box; height: 44px; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15); }
+input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; font-size: 13px; }
+#count { min-width: 56px; color: #6b7280; font-size: 12px; text-align: center; white-space: nowrap; }
+button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: #f3f4f6; color: #111827; cursor: pointer; }
+button:hover { background: #e5e7eb; }

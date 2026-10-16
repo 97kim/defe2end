@@ -1,0 +1,273 @@
+{
+  "pageTitle": "Run #{id}",
+  "testRunTitle": "Test run (unsaved steps)",
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "passed": "Passed",
+    "failed": "Failed",
+    "error": "Error",
+    "cancelled": "Cancelled",
+    "timed_out": "Timed out"
+  },
+  "stepStatus": {
+    "passed": "Passed",
+    "failed": "Failed",
+    "error": "Error",
+    "cancelled": "Cancelled",
+    "timed_out": "Timed out",
+    "skipped": "Not run",
+    "running": "Running",
+    "queued": "Queued",
+    "notRun": "Not run",
+    "warning": "Warning",
+    "skippedOptional": "Skipped (optional)"
+  },
+  "trigger": {
+    "manual": "Manual",
+    "test": "Test run",
+    "schedule": "Schedule",
+    "api": "API"
+  },
+  "summary": {
+    "queued": "Waiting for a worker",
+    "running": "Step {step} of {total} — {action} {target}",
+    "finishing": "All steps done — saving the result",
+    "passed": "All {total} steps passed",
+    "failedAt": "Failed at step {step} of {total}",
+    "afterAttempts": "after {count} attempts",
+    "errorAt": "Infrastructure error at step {step} of {total} — not a test failure",
+    "error": "Infrastructure error — not a test failure",
+    "cancelled": "Cancelled",
+    "cancelledAt": "Cancelled during step {step}",
+    "groupStopped": "Not run because an earlier run in its group didn't pass",
+    "timedOut": "Stopped at the overall time limit",
+    "timedOutAt": "Stopped at the overall time limit during step {step}",
+    "cancelRequested": "Cancel requested — the run stops at the next safe point unless it finishes first"
+  },
+  "runError": {
+    "worker_lost": "The worker stopped responding during step {step} — the run was not retried automatically",
+    "worker_shutdown": "The worker was shut down during step {step} before the run could finish",
+    "artifact_limit": "The run's files went over the size limit during step {step}, so it was stopped",
+    "browser_launch_failed": "The browser couldn't start on the worker",
+    "browser_crashed": "The browser crashed during step {step}",
+    "internal": "Something went wrong on the server during step {step}"
+  },
+  "infraBadge": "Infrastructure — not a test failure",
+  "cancelRequestedBadge": "Cancel requested",
+  "passedAfterRetry": "Passed after retry",
+  "warningCount": "{count, plural, one {# warning} other {# warnings}}",
+  "meta": {
+    "environment": "Environment",
+    "startedBy": "Started by",
+    "deletedUser": "Deleted user",
+    "duration": "Duration",
+    "elapsed": "Elapsed",
+    "stopped": "stopped",
+    "runner": "Runner",
+    "serverWorker": "Server worker",
+    "started": "Started",
+    "versions": "Runner / browser",
+    "desktop": "PC · {label}",
+    "desktopTitle": "Ran in the desktop app on the requester's PC"
+  },
+  "live": {
+    "updating": "updating live",
+    "reconnecting": "Live updates were interrupted. Reconnecting…",
+    "lost": "Live updates stopped. You may have signed out or lost access to this workspace.",
+    "reload": "Reload"
+  },
+  "actions": {
+    "cancel": "Cancel run",
+    "cancelling": "Cancelling…",
+    "cancelRequested": "Cancel requested",
+    "cancelFailed": "Couldn't cancel the run. Try again.",
+    "rerun": "Re-run",
+    "rerunFailedOnly": "Re-run failed only",
+    "rerunFailed": "Couldn't start the run. Try again.",
+    "starting": "Starting…",
+    "viewerHint": "Viewers can't start runs.",
+    "testRunHint": "Test runs use unsaved steps, so they can't be re-run here. Start a new test run from the scenario.",
+    "deletedHint": "The scenario or environment of this run was deleted.",
+    "comingHint": "Not available on this server yet."
+  },
+  "diagnose": {
+    "title": "Diagnose with AI",
+    "later": "Coming in a later version."
+  },
+  "side": {
+    "label": "Run details"
+  },
+  "progress": {
+    "step": "Step {step} of {total}",
+    "waiting": "Waiting for a worker",
+    "passed": "{count} passed"
+  },
+  "steps": {
+    "title": "Steps",
+    "none": "This run has no steps.",
+    "count": {
+      "passed": "{count} passed",
+      "warning": "{count} warning",
+      "failed": "{count} failed",
+      "error": "{count} error",
+      "timed_out": "{count} timed out",
+      "cancelled": "{count} cancelled",
+      "running": "{count} running",
+      "queued": "{count} queued",
+      "skipped": "{count} not run",
+      "notRun": "{count} not run"
+    },
+    "running": "running…",
+    "queued": "queued",
+    "notRun": "not run",
+    "attempt": "Attempt {attempts} of {max}",
+    "expected": "Expected",
+    "actual": "Actual",
+    "attempts": "{count, plural, one {# attempt} other {# attempts}}",
+    "duplicateTitle": "Possible duplicate submission.",
+    "duplicateBody": "This step was retried without undoing the page, so the site may have received it more than once.",
+    "skippedOptional": "skipped"
+  },
+  "infra": {
+    "explain": "The scenario didn't fail — defE2End lost the browser or the machine running it.",
+    "explainWithLater": "The scenario didn't fail — defE2End lost the browser or the machine running it, so {count, plural, one {the next step} other {the next # steps}} never ran.",
+    "whatToDo": "What to do",
+    "todoRerun": "Re-run the scenario. The steps above are kept for reference.",
+    "todoWorker": "If it happens again, ask an administrator to check the worker's logs and free memory.",
+    "stepError": "This isn't a test failure: the step couldn't be carried out. The error above says why.",
+    "stepErrorWithLater": "This isn't a test failure: the step couldn't be carried out, so {count, plural, one {the next step} other {the next # steps}} didn't run. The error above says why."
+  },
+  "files": {
+    "console": "Console",
+    "trace": "Trace",
+    "traceHint": "Open with: npx playwright show-trace <file>",
+    "logCounts": "{errors, plural, one {# error} other {# errors}} · {warnings, plural, one {# warning} other {# warnings}}",
+    "download": "Download",
+    "logFailed": "Couldn't load the log. Try downloading it.",
+    "loading": "Loading…"
+  },
+  "changes": {
+    "title": "Changed since last pass",
+    "vs": "vs #{id} · passed {when}",
+    "openBaseline": "Open that run",
+    "noBaseline": "No earlier passing run of this scenario on this environment to compare with.",
+    "none": "Nothing measurable changed since that pass.",
+    "stepsEdited": "Scenario steps changed",
+    "stepsEditedDetail": "{added} added · {removed} removed · {edited} edited",
+    "badgeEdited": "edited",
+    "outcome": "Step {step}: {status}",
+    "outcomeWas": "was {status} in that run — the first step that differs",
+    "badgeFirst": "first",
+    "slowStep": "Step {step} took {duration}",
+    "usual": "usual {duration}",
+    "baseUrl": "Environment URL changed",
+    "runnerVersion": "Runner version changed",
+    "browserVersion": "Browser version changed",
+    "badgeEnv": "env",
+    "badgeVersion": "version"
+  },
+  "recording": {
+    "title": "Recording",
+    "warning": "Video can't hide secrets or personal data."
+  },
+  "shots": {
+    "title": "Screenshots",
+    "count": "{count, plural, one {# captured} other {# captured}}",
+    "alt": "Screenshot of step {step}: {name}",
+    "step": "Step {step}"
+  },
+  "runner": {
+    "title": "Runner",
+    "worker": "Worker",
+    "notClaimed": "not picked up yet",
+    "browser": "Browser",
+    "queueWait": "Queue wait",
+    "waiting": "waiting"
+  },
+  "list": {
+    "filters": "Filter runs",
+    "status": "Status",
+    "scenario": "Scenario",
+    "environment": "Environment",
+    "trigger": "Trigger",
+    "any": "Any",
+    "apply": "Apply",
+    "clear": "Clear filters",
+    "run": "Run",
+    "queued": "Requested",
+    "noMatches": "No runs match these filters.",
+    "empty": "No runs yet",
+    "emptyBody": "Open a scenario and run it on an environment. Its results show up here.",
+    "openScenarios": "Open scenarios",
+    "pagination": "Pages",
+    "showing": "{from}–{to} of {total}",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "stopAll": {
+    "button": "Stop all",
+    "coming": "Not available on this server yet.",
+    "title": "Stop every run in this workspace?",
+    "body": "Queued runs are cancelled at once. Running ones are asked to stop and end as cancelled unless they finish first. Runs requested after this aren't affected.",
+    "keep": "Keep running",
+    "confirm": "Stop all runs",
+    "failed": "Couldn't stop the runs. Try again.",
+    "done": "{cancelled} cancelled · {requested} asked to stop"
+  },
+  "attempts": {
+    "label": "Run attempt",
+    "item": "Attempt {attempt}",
+    "latest": "Attempt {attempt} (final)"
+  },
+  "dashboard": {
+    "subtitle": "Last {days} days · {timezone}",
+    "period": "Period",
+    "periodDays": "{days} days",
+    "site": "Site",
+    "environment": "Environment",
+    "all": "All",
+    "apply": "Apply",
+    "cards": {
+      "passRate": "Pass rate",
+      "passRateHint": "Cancelled runs excluded",
+      "runs": "Runs",
+      "avgDuration": "Average duration",
+      "failingNow": "Failing now",
+      "fires": "Schedules not run",
+      "firesDetail": "Missed {missed} · Skipped {skipped} · Refused {refused}"
+    },
+    "failing": {
+      "title": "Failing now",
+      "empty": "Every scenario passed its last run.",
+      "kind": {
+        "new": "New",
+        "consecutive": "Consecutive",
+        "intermittent": "Intermittent"
+      },
+      "streak": "{count} in a row",
+      "cluster": "{count} failures share this cause",
+      "step": "Step {number} · {action}",
+      "noStep": "Before any step",
+      "history": "Recent runs, newest first",
+      "scenario": "Scenario",
+      "environment": "Environment",
+      "cause": "Cause",
+      "last": "Last run"
+    },
+    "trend": {
+      "title": "Daily pass rate",
+      "empty": "No finished runs in this period.",
+      "noRuns": "{day}: no runs",
+      "point": "{day}: {rate} ({passed} passed, {failed} not passed)"
+    },
+    "top": {
+      "title": "Most failing scenarios",
+      "empty": "No scenario ran three or more times with a failure.",
+      "scenario": "Scenario",
+      "failures": "Failures",
+      "runs": "Runs",
+      "lastFailed": "Last failure"
+    }
+  }
+}

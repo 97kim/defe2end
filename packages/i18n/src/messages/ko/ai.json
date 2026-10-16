@@ -1,0 +1,75 @@
+{
+  "provider": {
+    "claude": "Claude Code",
+    "codex": "Codex"
+  },
+  "status": {
+    "ready": "{provider} {version}",
+    "missing": "이 컴퓨터에 {provider}가 설치되어 있지 않아요.",
+    "unsupported": "{provider} {version}은 쓸 수 없어요. 앱이 할 수 있는 일을 제한하려면 {minVersion} 이상이 필요해요. 업데이트한 뒤 다시 찾아 주세요.",
+    "install": "설치 방법",
+    "recheck": "다시 찾기",
+    "checking": "AI 도구를 찾는 중이에요…",
+    "none": "쓸 수 있는 AI 도구가 없어요. Claude Code나 Codex를 설치한 뒤 다시 찾아 주세요."
+  },
+  "error": {
+    "auth": "{provider} 로그인이 만료됐어요. 터미널에서 `{command}` 명령을 실행한 뒤 다시 시도해 주세요.",
+    "missing": "{provider}를 실행하지 못했어요. 설치 상태를 확인한 뒤 다시 시도해 주세요.",
+    "failed": "{provider}가 오류로 멈췄어요: {message}",
+    "stopped": "중단했어요.",
+    "refused": {
+      "provider_unavailable": "지금은 이 AI 도구를 쓸 수 없어요.",
+      "provider_locked": "대화는 처음 고른 AI 도구를 계속 써요. 바꾸려면 새 대화를 시작해 주세요.",
+      "busy": "지금 답변이 끝날 때까지 기다리거나 중단해 주세요.",
+      "too_many_images": "이미지는 4장까지 첨부할 수 있어요.",
+      "image_too_large": "이미지는 장당 6MB 이하여야 해요.",
+      "bad_image": "PNG·JPEG·GIF·WebP 이미지만 첨부할 수 있어요.",
+      "empty": "메시지를 먼저 입력해 주세요.",
+      "too_long": "메시지가 너무 길어요.",
+      "unknown_provider": "알 수 없는 AI 도구예요.",
+      "invalid": "요청이 올바르지 않아요.",
+      "unsafe_cli": "이 CLI 버전은 도구 제한이 확인되지 않아 쓸 수 없어요.",
+      "stopped": "앱의 연결이나 계정이 바뀌어서 요청을 멈췄어요."
+    },
+    "unsafe": "{provider}를 멈췄어요. 이 CLI 버전은 앱이 허용하지 않는 도구가 보여서 쓸 수 없어요. 앱을 다시 시작할 때까지 막아 둬요."
+  },
+  "chat": {
+    "open": "AI 채팅",
+    "close": "AI 채팅 닫기",
+    "title": "AI 채팅",
+    "newThread": "새 대화",
+    "threads": "대화",
+    "untitled": "새 대화",
+    "providerLabel": "AI 도구",
+    "placeholder": "시나리오·실행·사이드 브라우저 화면에 대해 물어보세요",
+    "send": "보내기",
+    "stop": "중단",
+    "attach": "이미지 첨부",
+    "removeImage": "이미지 빼기",
+    "memoryOnly": "대화는 앱 메모리에만 있고 앱을 닫으면 사라져요.",
+    "empty": "실행 결과 읽기, 실패 원인 설명, 사이드 브라우저 조작을 맡겨 보세요. AI는 defE2End 도구만 쓸 수 있어요.",
+    "you": "나",
+    "thinking": "생각하는 중이에요…",
+    "images": "이미지 {count}장 첨부"
+  },
+  "diagnosis": {
+    "title": "AI로 진단",
+    "intro": "실패한 스텝과 앞뒤 스텝, 오류, 브라우저 로그, 실패 시점의 페이지 구조를 이 컴퓨터의 AI 도구로 보내요. 스크린샷은 보내지 않아요.",
+    "appOnly": "AI 진단은 defE2End 데스크톱 앱에서 이 실행을 열면 쓸 수 있어요.",
+    "nothing": "진단할 실패 스텝이 없어요.",
+    "start": "진단하기",
+    "preview": "보낼 내용",
+    "loading": "보낼 내용을 준비하는 중이에요…",
+    "running": "진단하는 중이에요…",
+    "saved": "저장했어요",
+    "saveFailed": "진단 결과를 저장하지 못했어요. 이 화면에만 보여요.",
+    "history": "지난 진단",
+    "by": "{provider} · {name} · {time}",
+    "consent": {
+      "title": "실행 정보를 외부 AI로 보낼까요?",
+      "body": "실패한 스텝, 오류, 브라우저 로그, 페이지 구조가 고른 도구의 AI 서비스(Anthropic 또는 OpenAI)로 나가요. 이메일·전화번호·URL 쿼리 값은 먼저 가리고, 스크린샷은 보내지 않아요. 진단할 때마다 보낼 내용을 미리 볼 수 있어요.",
+      "accept": "동의하고 계속",
+      "cancel": "취소"
+    }
+  }
+}

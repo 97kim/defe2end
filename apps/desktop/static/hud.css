@@ -1,0 +1,5 @@
+html, body { margin: 0; background: transparent; font-family: system-ui, sans-serif; overflow: hidden; }
+.card { display: flex; gap: 10px; align-items: center; box-sizing: border-box; height: 64px; padding: 10px 14px; border-radius: 10px; background: #111827; color: #ffffff; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }
+.dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: #ef4444; }
+strong { display: block; font-size: 14px; }
+small { display: block; max-width: 200px; overflow: hidden; color: #d1d5db; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }

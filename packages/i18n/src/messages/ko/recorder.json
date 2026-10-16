@@ -1,0 +1,37 @@
+{
+  "steps": {
+    "startPage": "시작 페이지",
+    "finalScreen": "최종 화면",
+    "quoted": "「{text}」",
+    "element": "요소",
+    "field": "필드",
+    "option": "셀렉트",
+    "password": "비밀번호",
+    "click": "{target} 클릭",
+    "fill": "{target} 입력",
+    "select": "{target} 선택",
+    "pressEnter": "Enter 키",
+    "hover": "{target} 호버",
+    "waitFor": "{target} 노출 대기",
+    "checkVisible": "{target} 보임 확인",
+    "checkVisibleOrWarn": "{target} 보임 확인(경고만)",
+    "checkText": "{target} 텍스트 확인",
+    "waitForUrl": "{path} 이동 대기",
+    "checkUrl": "{path} URL 확인",
+    "scrollBottom": "맨 아래로 스크롤",
+    "scrollTop": "맨 위로 스크롤",
+    "scrollBy": "{px}px 스크롤",
+    "checkPopupUrl": "새 창 URL 확인",
+    "closePopup": "새 창 닫기",
+    "conditional": "{name} (조건부)",
+    "accept": "{name} + 확인",
+    "dismiss": "{name} + 취소",
+    "newWindow": "{name} + 새 창"
+  },
+  "menu": {
+    "checkVisible": "보임 확인",
+    "checkVisibleOrWarn": "보임 확인(경고만)",
+    "checkText": "텍스트 확인",
+    "hover": "호버"
+  }
+}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Product</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/shop.js"></script>
+</head>
+<body>
+<h1 id="product-name" data-testid="product-name">Product not found</h1>
+<p id="product-price" data-testid="product-price"></p>
+<button id="add-to-cart" data-testid="add-to-cart" hidden>Add to cart</button>
+<p id="added" class="success" role="status" hidden>Added to cart.</p>
+<p><a href="/cart.html">Go to cart</a></p>
+<script>
+  const product = findProduct(new URLSearchParams(location.search).get("id"));
+  if (product) {
+    document.title = product.name;
+    document.getElementById("product-name").textContent = product.name;
+    document.getElementById("product-price").textContent = `$${product.price}`;
+    const button = document.getElementById("add-to-cart");
+    button.hidden = false;
+    button.addEventListener("click", () => {
+      writeCart([...readCart(), product.id]);
+      document.getElementById("added").hidden = false;
+    });
+  }
+</script>
+</body>
+</html>

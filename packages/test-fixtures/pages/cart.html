@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cart</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/shop.js"></script>
+</head>
+<body>
+<h1>Cart</h1>
+<ul id="cart-items" data-testid="cart-items"></ul>
+<p>Total: <span id="cart-total" data-testid="cart-total">$0</span></p>
+<form id="checkout-form">
+  <label>Card number <input name="card" data-testid="card-number" inputmode="numeric"></label>
+  <button type="submit" data-testid="checkout-submit">Place order</button>
+</form>
+<p id="checkout-error" class="error" role="alert" hidden></p>
+<script>
+  const items = readCart().map(findProduct).filter(Boolean);
+  document.getElementById("cart-items").innerHTML = items.map((p) => `<li>${p.name} — $${p.price}</li>`).join("");
+  document.getElementById("cart-total").textContent = `$${items.reduce((sum, p) => sum + p.price, 0)}`;
+  document.getElementById("checkout-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const error = document.getElementById("checkout-error");
+    const card = String(new FormData(event.target).get("card")).replace(/\s+/g, "");
+    if (items.length === 0) {
+      error.textContent = "Your cart is empty.";
+      error.hidden = false;
+    } else if (card !== APPROVED_CARD) {
+      error.textContent = "Payment declined.";
+      error.hidden = false;
+    } else {
+      writeCart([]);
+      location.href = "/order-complete.html";
+    }
+  });
+</script>
+</body>
+</html>
