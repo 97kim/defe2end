@@ -69,6 +69,18 @@ describe("masking in screenshots", () => {
     expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
   });
 
+  it("takes no failure screenshot when the first try was refused and the retry failed otherwise", async () => {
+    let screenshotOpens = 0;
+    const { files, results } = await execute(
+      makePlan(fixtures.url, [{ id: "open", action: "goto", url: "/mask-once.html" }, { ...shot, mask: "#step-once" }]),
+      { masking: SETTINGS, failOpen: (meta) => meta.kind === "screenshot" && screenshotOpens++ === 0 },
+    );
+    expect(results[1]!.status).toBe("failed");
+    expect(results[1]!.attempts).toBe(2);
+    expect(results[1]!.errorMessage).toContain("storage is unavailable");
+    expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
+  });
+
   it("skips the failure screenshot when masking can't be applied", async () => {
     const { files, results } = await execute(
       makePlan(fixtures.url, [open, { id: "bad", action: "assertText", selector: "#email", expected: "nope", timeout: 300 }]),

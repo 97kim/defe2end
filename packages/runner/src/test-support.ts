@@ -28,10 +28,12 @@ export function useFixtures(): { readonly url: string; readonly port: number } {
 
 export type StoredArtifact = ArtifactRef & { bytes: Buffer };
 
-export function memorySink() {
+/** `failOpen` makes chosen opens throw (e.g. the first screenshot), as a broken storage would. */
+export function memorySink(failOpen?: (meta: Parameters<ArtifactSink["open"]>[0]) => boolean) {
   const files: StoredArtifact[] = [];
   const sink: ArtifactSink = {
     async open(meta) {
+      if (failOpen?.(meta)) throw new Error("storage is unavailable");
       const chunks: Uint8Array[] = [];
       return {
         write: async (chunk) => void chunks.push(chunk),
@@ -65,10 +67,10 @@ export function makePlan(baseUrl: string, steps: Step[], extra: Partial<Executio
 
 export async function execute(
   p: ExecutionPlan,
-  opts: { signal?: AbortSignal; internals?: RunInternals; resolveAttachment?: RunPlanOptions["resolveAttachment"]; masking?: RunPlanOptions["masking"] } = {},
+  opts: { signal?: AbortSignal; internals?: RunInternals; resolveAttachment?: RunPlanOptions["resolveAttachment"]; masking?: RunPlanOptions["masking"]; failOpen?: Parameters<typeof memorySink>[0] } = {},
 ) {
   const events: RunnerEvent[] = [];
-  const { sink, files } = memorySink();
+  const { sink, files } = memorySink(opts.failOpen);
   const verdict = await runPlanWith(
     p,
     {
