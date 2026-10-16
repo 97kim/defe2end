@@ -6,35 +6,13 @@ import { useAiBridge, useProviderStatus, type AiEvent, type Provider } from "../
 import { ProviderNotices, useRefusalText, useTurnErrorText } from "../../../../../components/ai/provider-notice";
 import { Alert, Button, Dialog } from "../../../../../components/ui";
 import type { DiagnosisView } from "../../../../../lib/diagnoses";
+import { hasConsent, recordConsent } from "../../../../../lib/diagnosis-consent";
 import { buildDiagnosisPrompt, diagnosisLogText, diagnosisThreadId, pickDiagnosisArtifacts } from "../../../../../lib/diagnosis-input";
 import type { RunDetail } from "../../../../../lib/run-read";
 import { SparklesIcon } from "../run-ui";
 
 // Failure diagnosis (stage 6 contract section 8): only inside the desktop app. Consent once, the exact masked text
 // to review each time, one tool-less turn on the user's CLI, then the result is saved apart from the step errors.
-
-const CONSENT_URL = "/api/account/ai-diagnosis-consent";
-/** Where the consent lived before it moved to the server; read once, moved, then removed. */
-const LEGACY_CONSENT_KEY = "defe2end.ai.diagnosisConsent";
-
-async function recordConsent(): Promise<boolean> {
-  const res = await fetch(CONSENT_URL, { method: "POST" }).catch(() => null);
-  return !!res?.ok;
-}
-
-/** The user's consent on the server, moving a browser-only one there first. Any failure counts as "not yet". */
-async function hasConsent(): Promise<boolean> {
-  const res = await fetch(CONSENT_URL).catch(() => null);
-  if (!res?.ok) return false;
-  const { consentedAt } = (await res.json().catch(() => ({}))) as { consentedAt?: string | null };
-  if (consentedAt) {
-    localStorage.removeItem(LEGACY_CONSENT_KEY);
-    return true;
-  }
-  if (localStorage.getItem(LEGACY_CONSENT_KEY) !== "1" || !(await recordConsent())) return false;
-  localStorage.removeItem(LEGACY_CONSENT_KEY);
-  return true;
-}
 
 async function artifactText(url: string): Promise<string | null> {
   const res = await fetch(url).catch(() => null);
@@ -119,6 +97,11 @@ export function DiagnosisPanel({ slug, run, attempt }: { slug: string; run: RunD
   async function send() {
     if (!bridge || !chosen || !prompt) return;
     setError(null);
+    // Withdrawn elsewhere since the preview (or unknown): nothing leaves; ask again.
+    if (!(await hasConsent())) {
+      setPrompt(undefined);
+      return setConsentOpen(true);
+    }
     setOutput("");
     const id = diagnosisThreadId();
     thread.current = id;
