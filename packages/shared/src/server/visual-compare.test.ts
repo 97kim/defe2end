@@ -6,7 +6,6 @@ import {
   decodePng,
   encodePng,
   environmentScreenVerdict,
-  ssimOf,
   type RawImage,
 } from "./visual-compare.js";
 
@@ -69,7 +68,7 @@ describe("compareDecoded", () => {
     for (let x = 0; x < 5; x++) setPixel(b, x * 2, 5, [0, 0, 0]); // 5 of 100 pixels
     const at = compareDecoded(a, b, { tolerance: 5, mode: "regression" });
     expect(at).toMatchObject({ verdict: "match", diffPercent: 5 });
-    expect(at.ssim).toBeUndefined();
+    expect(at.shift).toBeUndefined();
     const over = compareDecoded(a, b, { tolerance: 4.999, mode: "regression" });
     expect(over.verdict).not.toBe("match");
   });
@@ -94,38 +93,57 @@ describe("compareDecoded", () => {
     expect(compareDecoded(a, c, { tolerance: 0, mode: "regression" }).diffPercent).toBe(100);
   });
 
-  // Measured with this engine: a 1px shift of a desktop page stays over the SSIM floor; 2px shifts and narrow
-  // (mobile) pages fall under it and read as `changed`. See the stage 7 report before relying on `shifted`.
-  it("catches a 1px shift of a desktop page as shifted", () => {
-    const r = compareDecoded(page(1920, 1080), page(1920, 1080, 0, 1), { tolerance: 0, mode: "regression" });
+  const shifts: [number, number][] = [];
+  for (const d of [1, 2, -1, -2]) shifts.push([d, 0], [0, d], [d, d], [d, -d]);
+  it.each(shifts)("calls a shift of x=%i y=%i shifted and reports it", (dx, dy) => {
+    const r = compareDecoded(page(800, 600), page(800, 600, dx, dy), { tolerance: 0, mode: "regression" });
     expect(r.diffPercent).toBeGreaterThan(0);
-    expect(r.ssim).toBeGreaterThanOrEqual(0.95);
     expect(r.verdict).toBe("shifted");
+    expect(r.shift).toEqual({ x: dx, y: dy });
+    expect(r.shiftDiffPercent).toBe(0);
     expect(r.diffPng).toBeDefined();
   });
 
-  it("calls a real content change changed", () => {
-    const b = page(800, 600);
-    fillRect(b, 0, 150, 800, 300, [10, 200, 10]);
-    const r = compareDecoded(page(800, 600), b, { tolerance: 5, mode: "regression" });
+  it.each([[3, 0], [0, 3], [3, 3]])("calls a shift of x=%i y=%i changed", (dx, dy) => {
+    const r = compareDecoded(page(800, 600), page(800, 600, dx, dy), { tolerance: 0, mode: "regression" });
     expect(r.verdict).toBe("changed");
-    expect(r.ssim).toBeLessThan(0.95);
+    expect(r.shiftDiffPercent).toBeGreaterThan(0);
+  });
+
+  it("calls a 2px shift of a mobile page shifted", () => {
+    expect(compareDecoded(page(390, 844), page(390, 844, 0, 2), { tolerance: 0, mode: "regression" }).verdict).toBe("shifted");
+  });
+
+  it("calls a small boxed change changed", () => {
+    const b = page(800, 600);
+    fillRect(b, 300, 250, 200, 40, [200, 30, 30]); // 1.7% of the page
+    const r = compareDecoded(page(800, 600), b, { tolerance: 1, mode: "regression" });
+    expect(r.verdict).toBe("changed");
     expect(r.diffPng).toBeDefined();
   });
 
-  it("uses the SSIM floor as an inclusive boundary", () => {
+  it("calls a 2px shift plus a local change changed", () => {
+    const b = page(800, 600, 0, 2);
+    fillRect(b, 300, 250, 200, 40, [200, 30, 30]);
+    const r = compareDecoded(page(800, 600), b, { tolerance: 1, mode: "regression" });
+    expect(r.verdict).toBe("changed");
+    expect(r.shift).toEqual({ x: 0, y: 2 });
+    expect(r.shiftDiffPercent).toBeGreaterThan(1);
+  });
+
+  it("uses the tolerance as an inclusive boundary for the shifted difference", () => {
     const a = page(400, 300);
     const b = page(400, 300, 0, 2);
-    const ssim = ssimOf(a, b);
-    expect(compareDecoded(a, b, { tolerance: 0, mode: "regression", ssimMin: ssim }).verdict).toBe("shifted");
-    expect(compareDecoded(a, b, { tolerance: 0, mode: "regression", ssimMin: ssim + 1e-9 }).verdict).toBe("changed");
+    fillRect(b, 100, 250, 20, 10, [200, 30, 30]);
+    const { shiftDiffPercent } = compareDecoded(a, b, { tolerance: 0, mode: "regression" });
+    expect(shiftDiffPercent).toBeGreaterThan(0);
+    expect(compareDecoded(a, b, { tolerance: shiftDiffPercent!, mode: "regression" }).verdict).toBe("shifted");
+    expect(compareDecoded(a, b, { tolerance: shiftDiffPercent! * 0.999, mode: "regression" }).verdict).toBe("changed");
   });
 
-  it("is deterministic and symmetric enough for SSIM on large images", () => {
-    const a = page(1200, 900);
-    const b = page(1200, 900, 1, 0);
-    expect(ssimOf(a, b)).toBe(ssimOf(a, b));
-    expect(ssimOf(a, a)).toBeCloseTo(1, 12);
+  it("finds the shift in a large image through sampled bands", () => {
+    const r = compareDecoded(page(1920, 1400), page(1920, 1400, -2, 1), { tolerance: 0, mode: "regression" });
+    expect(r).toMatchObject({ verdict: "shifted", shift: { x: -2, y: 1 }, shiftDiffPercent: 0 });
   });
 
   it("follows the diff rule per mode", () => {
@@ -190,10 +208,18 @@ describe("compareImages (worker)", () => {
     const r = await compareImages(a, b, { tolerance: 0, mode: "environment" });
     const elapsed = performance.now() - started;
     clearInterval(timer);
-    console.log(`1920x4000 compare: ${elapsed.toFixed(0)} ms, ${ticks} timer ticks, verdict ${r.verdict}, diff ${r.diffPercent.toFixed(3)}%, ssim ${r.ssim?.toFixed(4)}`);
-    expect(r.ssim).toBeDefined();
+    console.log(`1920x4000 compare: ${elapsed.toFixed(0)} ms, ${ticks} timer ticks, verdict ${r.verdict}, diff ${r.diffPercent.toFixed(3)}%, shift ${JSON.stringify(r.shift)} ${r.shiftDiffPercent}`);
+    expect(r).toMatchObject({ verdict: "shifted", shift: { x: 0, y: 2 } });
     expect(elapsed).toBeLessThan(10_000);
     // The main thread kept running while the worker compared.
     expect(ticks).toBeGreaterThan(Math.floor(elapsed / 10 / 4));
+
+    // Worst case: nothing lines up, so every candidate is confirmed in full.
+    const c = page(1920, 4000);
+    fillRect(c, 0, 1000, 1920, 1500, [10, 200, 10]);
+    const t0 = performance.now();
+    const changed = await compareImages(a, png(c), { tolerance: 5, mode: "environment" });
+    console.log(`1920x4000 changed: ${(performance.now() - t0).toFixed(0)} ms, shift diff ${changed.shiftDiffPercent?.toFixed(2)}%`);
+    expect(changed.verdict).toBe("changed");
   }, 30_000);
 });

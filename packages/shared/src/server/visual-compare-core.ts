@@ -6,12 +6,13 @@ import { PNG } from "pngjs";
 
 /** Pixel colour sensitivity (0..1, smaller is stricter). Instance constant (contract section 1). */
 export const VISUAL_PIXEL_SENSITIVITY = 0.05;
-/** SSIM at or above this means a small shift rather than a change. Instance constant (contract section 1). */
-export const VISUAL_SSIM_MIN = 0.95;
+/** A difference that disappears when the current image is moved by up to this many pixels is a shift. Instance constant. */
+export const VISUAL_SHIFT_RANGE = 2;
 /** Default allowed difference in percent (step `threshold`, environment comparison tolerance). */
 export const VISUAL_DEFAULT_TOLERANCE = 5;
-/** SSIM is computed on a grayscale copy scaled down so its short side is this many pixels. */
-export const VISUAL_SSIM_SHORT_SIDE = 256;
+/** Above this many pixels the shift search scores offsets on horizontal bands first, then confirms on the full image. */
+const SHIFT_SAMPLE_ABOVE = 2_000_000;
+const SHIFT_CONFIRM = 3;
 
 export type VisualCompareVerdict = "match" | "shifted" | "changed" | "size_mismatch";
 /** `regression`: diff only for `shifted`/`changed`. `environment`: diff for every valid pair. */
@@ -34,15 +35,25 @@ export interface VisualCompareOptions {
   mode: VisualCompareMode;
   /** Overrides for tests; production uses the instance constants. */
   pixelSensitivity?: number;
-  ssimMin?: number;
+  shiftRange?: number;
+}
+
+/** Offset of the current image's content relative to the baseline: `y: 2` = moved 2px down. */
+export interface ImageShift {
+  x: number;
+  y: number;
 }
 
 export interface VisualCompareResult {
   verdict: VisualCompareVerdict;
   /** Differing pixels / all pixels × 100, unrounded. 100 for `size_mismatch`. Round only for display. */
   diffPercent: number;
-  /** Set when the difference was over the tolerance and the sizes matched. */
-  ssim?: number;
+  /**
+   * Set when the difference was over the tolerance and the sizes matched: the offset with the smallest
+   * difference over the overlapping area, and that difference (unrounded). `shifted` when it is ≤ tolerance.
+   */
+  shift?: ImageShift;
+  shiftDiffPercent?: number;
   /** PNG, per the mode's rule. */
   diffPng?: Uint8Array;
   /** `a` is the baseline (regression) or left side (environment); `b` the current capture or right side. */
@@ -72,7 +83,7 @@ export function compareDecoded(a: RawImage, b: RawImage, opts: VisualCompareOpti
   const { tolerance, mode } = opts;
   if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance > 100) throw new RangeError(`tolerance must be 0..100, got ${tolerance}`);
   const sensitivity = opts.pixelSensitivity ?? VISUAL_PIXEL_SENSITIVITY;
-  const ssimMin = opts.ssimMin ?? VISUAL_SSIM_MIN;
+  const range = opts.shiftRange ?? VISUAL_SHIFT_RANGE;
   const aSize = { width: a.width, height: a.height };
   const bSize = { width: b.width, height: b.height };
 
@@ -91,11 +102,11 @@ export function compareDecoded(a: RawImage, b: RawImage, opts: VisualCompareOpti
   if (diffPercent <= tolerance) {
     return { verdict: "match", diffPercent, aSize, bSize, ...(wantDiff ? { diffPng: encodePng({ width: a.width, height: a.height, data: out }) } : {}) };
   }
-  const ssim = ssimOf(a, b);
+  const best = searchShift(a, b, sensitivity, range);
   return {
-    verdict: ssim >= ssimMin ? "shifted" : "changed",
+    verdict: best && best.diffPercent <= tolerance ? "shifted" : "changed",
     diffPercent,
-    ssim,
+    ...(best ? { shift: { x: best.x, y: best.y }, shiftDiffPercent: best.diffPercent } : {}),
     aSize,
     bSize,
     diffPng: encodePng({ width: a.width, height: a.height, data: out }),
@@ -145,124 +156,61 @@ function pad(img: RawImage, width: number, height: number): Uint8Array {
   return out;
 }
 
-/** Luminance, alpha composited over white. */
-function grayscale(img: RawImage): Float64Array {
-  const out = new Float64Array(img.width * img.height);
-  const d = img.data;
-  for (let p = 0, i = 0; p < out.length; p++, i += 4) {
-    const alpha = d[i + 3]! / 255;
-    const lum = 0.299 * d[i]! + 0.587 * d[i + 1]! + 0.114 * d[i + 2]!;
-    out[p] = lum * alpha + 255 * (1 - alpha);
-  }
-  return out;
+interface ShiftCandidate extends ImageShift {
+  diffPercent: number;
 }
-
-/** Box-filter downscale with integer source spans, so the result doesn't depend on floating point order. */
-function downscale(src: Float64Array, w: number, h: number, nw: number, nh: number): Float64Array {
-  const rows = new Float64Array(nw * h);
-  for (let x = 0; x < nw; x++) {
-    const x0 = Math.floor((x * w) / nw);
-    const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * w) / nw));
-    for (let y = 0; y < h; y++) {
-      let sum = 0;
-      for (let sx = x0; sx < x1; sx++) sum += src[y * w + sx]!;
-      rows[y * nw + x] = sum / (x1 - x0);
-    }
-  }
-  const out = new Float64Array(nw * nh);
-  for (let y = 0; y < nh; y++) {
-    const y0 = Math.floor((y * h) / nh);
-    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * h) / nh));
-    for (let x = 0; x < nw; x++) {
-      let sum = 0;
-      for (let sy = y0; sy < y1; sy++) sum += rows[sy * nw + x]!;
-      out[y * nw + x] = sum / (y1 - y0);
-    }
-  }
-  return out;
-}
-
-const SSIM_SIGMA = 1.5;
-const SSIM_RADIUS = 5; // 11×11 Gaussian window
-const C1 = (0.01 * 255) ** 2;
-const C2 = (0.03 * 255) ** 2;
-const KERNEL = Array.from({ length: SSIM_RADIUS * 2 + 1 }, (_, i) => Math.exp(-((i - SSIM_RADIUS) ** 2) / (2 * SSIM_SIGMA ** 2)));
 
 /**
- * Mean SSIM (11×11 Gaussian window, sigma 1.5) of grayscale copies scaled down to a 256px short side.
- * Same-size inputs. The window is renormalised at the borders.
+ * Smallest difference over the overlap when `b` is read at an offset of up to `range` px in each direction
+ * (the unshifted position excluded). Large images score every offset on sampled bands and confirm the best
+ * few on the full overlap, so the verdict always rests on full-resolution numbers.
  */
-export function ssimOf(a: RawImage, b: RawImage): number {
-  let { width: w, height: h } = a;
-  let ga = grayscale(a);
-  let gb = grayscale(b);
-  const short = Math.min(w, h);
-  if (short > VISUAL_SSIM_SHORT_SIDE) {
-    const scale = VISUAL_SSIM_SHORT_SIDE / short;
-    const nw = Math.max(1, Math.round(w * scale));
-    const nh = Math.max(1, Math.round(h * scale));
-    ga = downscale(ga, w, h, nw, nh);
-    gb = downscale(gb, w, h, nw, nh);
-    w = nw;
-    h = nh;
+function searchShift(a: RawImage, b: RawImage, sensitivity: number, range: number): ShiftCandidate | undefined {
+  const offsets: ImageShift[] = [];
+  for (let y = -range; y <= range; y++) for (let x = -range; x <= range; x++) if ((x || y) && Math.abs(x) < a.width && Math.abs(y) < a.height) offsets.push({ x, y });
+  if (offsets.length === 0) return undefined;
+  let confirm = offsets;
+  if (a.width * a.height > SHIFT_SAMPLE_ABOVE) {
+    const scored = offsets.map((o) => ({ ...o, score: offsetDiff(a, b, o, sensitivity, 8) }));
+    scored.sort((p, q) => p.score - q.score || order(p) - order(q));
+    confirm = scored.slice(0, SHIFT_CONFIRM);
   }
-  const n = w * h;
-  const aa = new Float64Array(n);
-  const bb = new Float64Array(n);
-  const ab = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    aa[i] = ga[i]! * ga[i]!;
-    bb[i] = gb[i]! * gb[i]!;
-    ab[i] = ga[i]! * gb[i]!;
+  let best: ShiftCandidate | undefined;
+  for (const o of confirm) {
+    const diffPercent = offsetDiff(a, b, o, sensitivity, 1);
+    if (!best || diffPercent < best.diffPercent || (diffPercent === best.diffPercent && order(o) < order(best))) best = { x: o.x, y: o.y, diffPercent };
   }
-  const ma = blur(ga, w, h);
-  const mb = blur(gb, w, h);
-  const saa = blur(aa, w, h);
-  const sbb = blur(bb, w, h);
-  const sab = blur(ab, w, h);
-  let total = 0;
-  for (let i = 0; i < n; i++) {
-    const mx = ma[i]!;
-    const my = mb[i]!;
-    const vx = saa[i]! - mx * mx;
-    const vy = sbb[i]! - my * my;
-    const cov = sab[i]! - mx * my;
-    total += ((2 * mx * my + C1) * (2 * cov + C2)) / ((mx * mx + my * my + C1) * (vx + vy + C2));
-  }
-  return total / n;
+  return best;
 }
 
-/** Separable Gaussian blur, weights renormalised where the window leaves the image. */
-function blur(src: Float64Array, w: number, h: number): Float64Array {
-  const tmp = new Float64Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let sum = 0;
-      let weight = 0;
-      for (let k = -SSIM_RADIUS; k <= SSIM_RADIUS; k++) {
-        const xx = x + k;
-        if (xx < 0 || xx >= w) continue;
-        const kw = KERNEL[k + SSIM_RADIUS]!;
-        sum += src[y * w + xx]! * kw;
-        weight += kw;
-      }
-      tmp[y * w + x] = sum / weight;
-    }
-  }
-  const out = new Float64Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let sum = 0;
-      let weight = 0;
-      for (let k = -SSIM_RADIUS; k <= SSIM_RADIUS; k++) {
-        const yy = y + k;
-        if (yy < 0 || yy >= h) continue;
-        const kw = KERNEL[k + SSIM_RADIUS]!;
-        sum += tmp[yy * w + x]! * kw;
-        weight += kw;
-      }
-      out[y * w + x] = sum / weight;
-    }
-  }
-  return out;
+/** Tie-break: the smaller move wins, then a fixed scan order. */
+function order(o: ImageShift): number {
+  return (Math.abs(o.x) + Math.abs(o.y)) * 1_000 + (o.y + 50) * 100 + (o.x + 50);
+}
+
+const BAND_ROWS = 32;
+
+/**
+ * Difference percentage between `a(x, y)` and `b(x + dx, y + dy)` over their overlap. `sample` > 1 compares
+ * only one band of 32 rows in every `sample` bands (candidate scoring).
+ */
+function offsetDiff(a: RawImage, b: RawImage, o: ImageShift, sensitivity: number, sample: number): number {
+  const w = a.width - Math.abs(o.x);
+  const h = a.height - Math.abs(o.y);
+  const ax = Math.max(0, -o.x);
+  const ay = Math.max(0, -o.y);
+  const bx = Math.max(0, o.x);
+  const by = Math.max(0, o.y);
+  const rows: number[] = [];
+  for (let y = 0; y < h; y++) if (sample === 1 || Math.floor(y / BAND_ROWS) % sample === 0) rows.push(y);
+  const ca = new Uint8Array(w * rows.length * 4);
+  const cb = new Uint8Array(w * rows.length * 4);
+  rows.forEach((y, r) => {
+    const sa = ((ay + y) * a.width + ax) * 4;
+    const sb = ((by + y) * b.width + bx) * 4;
+    ca.set(a.data.subarray(sa, sa + w * 4), r * w * 4);
+    cb.set(b.data.subarray(sb, sb + w * 4), r * w * 4);
+  });
+  const differing = pixelmatch(ca, cb, null, w, rows.length, { threshold: sensitivity });
+  return (differing / (w * rows.length)) * 100;
 }
