@@ -14,3 +14,4 @@ export * from "./mcp-tools.js";
 export * from "./mcp-socket.js";
 export * from "./redact.js";
 export * from "./structure-diff.js";
+export * from "./screen-quality.js";

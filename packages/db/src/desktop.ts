@@ -91,7 +91,7 @@ export async function markDispatched(
   connectionId: string,
   opts: {
     /** Re-check against the current connection (e.g. capabilities). A string refuses: the caller ends the run. */
-    check?: (tx: Tx, run: { trigger: string; snapshot: unknown; options: unknown; environmentId: string | null }, capabilities: string[]) => Promise<string | null>;
+    check?: (tx: Tx, run: { trigger: string; snapshot: unknown; options: unknown; environmentId: string | null; comparisonId: string | null }, capabilities: string[]) => Promise<string | null>;
   } = {},
 ): Promise<DispatchedRun | { refused: string } | null> {
   return db.$transaction(async (tx) => {
@@ -103,7 +103,7 @@ export async function markDispatched(
       SELECT (status = 'queued' AND location = 'desktop' AND "desktopDeviceId" = ${deviceId} AND "dispatchedAt" IS NULL) AS ok
       FROM "Run" WHERE id = ${runId} FOR UPDATE`;
     if (!row?.ok) return null;
-    const run = await tx.run.findUniqueOrThrow({ where: { id: runId }, select: { trigger: true, snapshot: true, options: true, environmentId: true } });
+    const run = await tx.run.findUniqueOrThrow({ where: { id: runId }, select: { trigger: true, snapshot: true, options: true, environmentId: true, comparisonId: true } });
     if (opts.check) {
       const refusal = await opts.check(tx, run, device.capabilities);
       if (refusal) return { refused: refusal };
@@ -301,7 +301,7 @@ export async function completeDesktopRun(db: Db, runId: string, claimToken: stri
 }
 
 export interface DesktopArtifactKey {
-  kind: "screenshot" | "video" | "trace" | "log" | "dom_summary";
+  kind: "screenshot" | "video" | "trace" | "log" | "dom_summary" | "visual_diff" | "a11y_snapshot";
   attempt: number;
   name: string;
   stepIndex?: number;

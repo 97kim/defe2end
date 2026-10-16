@@ -161,7 +161,7 @@ export class DesktopStreamSession {
  */
 async function missingOnThisConnection(
   tx: Prisma.TransactionClient,
-  run: { trigger: string; snapshot: unknown; options: unknown; environmentId: string | null },
+  run: { trigger: string; snapshot: unknown; options: unknown; environmentId: string | null; comparisonId: string | null },
   capabilities: string[],
 ): Promise<string | null> {
   const snapshot = runSnapshotSchema.parse(run.snapshot);
@@ -172,6 +172,7 @@ async function missingOnThisConnection(
       trigger: run.trigger as RunTrigger,
       video: runOptionsSchema.parse(run.options ?? {}).video === true,
       useAuthSession: environment?.useAuthSession === true,
+      comparisonChild: run.comparisonId !== null,
     }),
     capabilities,
   );

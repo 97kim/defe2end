@@ -50,6 +50,8 @@ model User {
   desktopTokens          DesktopToken[]
   mcpTokens              McpToken[]
   runDiagnoses           RunDiagnosis[]
+  baselinesApproved      VisualBaselineVersion[]
+  envComparisons         EnvComparison[]
   authSessions           AuthSession[]
   personalVariableValues PersonalVariableValue[]
   schedulesCreated       Schedule[]              @relation("ScheduleCreatedBy")
@@ -173,6 +175,8 @@ model Workspace {
   schedules     Schedule[]
   botTokens     BotToken[]
   slackWebhooks SlackWebhook[]
+  baselines     VisualBaseline[]
+  comparisons   EnvComparison[]
 }
 
 model Membership {
@@ -244,12 +248,15 @@ model Site {
   id          String    @id @default(cuid())
   workspaceId String
   name        String
+  /// Mask selector list (stage 7 contract section 5): commas or line breaks, validated on save.
+  maskSelectors String    @default("")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   environments Environment[]
   scenarios    Scenario[]
+  comparisons  EnvComparison[]
 
   @@unique([workspaceId, name])
 }
@@ -272,6 +279,9 @@ model Environment {
   groupRuns    GroupRun[]
   authSessions AuthSession[]
   schedules    Schedule[]
+  baselines        VisualBaseline[]
+  comparisonsLeft  EnvComparison[]  @relation("ComparisonLeft")
+  comparisonsRight EnvComparison[]  @relation("ComparisonRight")
 
   @@unique([siteId, name])
   @@index([workspaceId])
@@ -340,12 +350,16 @@ model Scenario {
   retryOnFailure    Boolean       @default(true)
   /// Set when created, changed or copied over MCP: `mcp:claude`, `mcp:codex` or `mcp:unknown` (stage 6 contract section 4).
   source            String?
+  /// Site selectors and automatic detection (stage 7 contract section 5). Step and input masks stay on.
+  maskingEnabled    Boolean          @default(true)
   workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   site              Site          @relation(fields: [siteId], references: [id], onDelete: NoAction)
   createdBy         User?         @relation("ScenarioCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy         User?         @relation("ScenarioUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   tags              ScenarioTag[]
   runs              Run[]
+  baselines         VisualBaseline[]
+  comparisons       EnvComparison[]
 
   @@index([workspaceId, archivedAt])
 }
@@ -411,6 +425,8 @@ enum ArtifactKind {
   trace
   log
   dom_summary
+  visual_diff
+  a11y_snapshot
 }
 
 enum GroupRunMode {
@@ -475,6 +491,9 @@ model Run {
   /// When the `run` message went out, and on which SSE connection (reconnect reconciliation, section 4.4).
   dispatchedAt           DateTime?
   dispatchedConnectionId String?
+  /// Environment comparison child (stage 7 contract section 6): left out of run lists, notifications and cleanup.
+  comparisonId           String?
+  comparisonSide         ComparisonSide?
   workspace              Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   scenario               Scenario?              @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
   environment            Environment?           @relation(fields: [environmentId], references: [id], onDelete: SetNull)
@@ -491,6 +510,9 @@ model Run {
   apiIdempotency         ApiIdempotency[]
   stepResults            StepResult[]
   artifacts              Artifact[]
+  comparison             EnvComparison?          @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  baselinePins           RunBaselinePin[]
+  baselinesSourced       VisualBaselineVersion[]
 
   @@unique([workspaceId, idempotencyKey])
   @@index([status, queuedAt])
@@ -501,6 +523,7 @@ model Run {
   @@index([scheduleId, status])
   @@index([groupRunId, groupIndex])
   @@index([desktopDeviceId, status])
+  @@index([comparisonId])
 }
 
 /// Text fields are masked before they are written.
@@ -522,9 +545,27 @@ model StepResult {
   actual            String?
   /// A mutating step needed more than one attempt, so the target may have received it twice.
   possibleDuplicate Boolean          @default(false)
+  /// Visual regression (stage 7 contract section 4). Raw values; display rounds.
+  visualVerdict           VisualVerdict?
+  /// Set when the server compared again (first-baseline race); wins over the app's verdict.
+  visualServerVerdict     VisualVerdict?
+  visualDiffPercent       Float?
+  /// Smallest difference after the shift search, raw.
+  visualShiftDiffPercent  Float?
+  /// `{ x, y }`: the shift that gave it.
+  visualShift             Json?
+  /// Baseline version the verdict used; keeps that version from cleanup.
+  visualBaselineVersionId String?
+  /// `RenderConditions` of this capture.
+  render                  Json?
   run               Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
+  visualBaselineVersion   VisualBaselineVersion?  @relation("StepResultBaseline", fields: [visualBaselineVersionId], references: [id], onDelete: SetNull)
+  baselinesSourced        VisualBaselineVersion[] @relation("BaselineSourceStep")
+  comparisonLeft          EnvComparisonStep[]     @relation("ComparisonStepLeft")
+  comparisonRight         EnvComparisonStep[]     @relation("ComparisonStepRight")
 
   @@unique([runId, attempt, index])
+  @@index([visualBaselineVersionId])
 }
 
 model Artifact {
@@ -618,6 +659,7 @@ model DesktopDevice {
   runs          Run[]
   groupRuns     GroupRun[]
   capture       DesktopCaptureRequest?
+  comparisons   EnvComparison[]
 
   @@unique([installId, userId])
   @@index([userId, lastSeenAt])
@@ -978,4 +1020,203 @@ model RunDiagnosis {
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([runId, createdAt])
+}
+
+// --- Screen quality (stage 7 contract section 2) ----------------------------------
+
+enum VisualVerdict {
+  created
+  match
+  shifted
+  changed
+  size_mismatch
+  skipped
+  incomparable
+}
+
+enum BaselineSource {
+  auto
+  approved
+}
+
+enum ComparisonSide {
+  left
+  right
+}
+
+enum EnvComparisonStatus {
+  running
+  comparing
+  done
+  error
+  cancelled
+}
+
+enum ComparisonVerdict {
+  same
+  different
+  incomparable
+}
+
+enum EnvComparisonFileKind {
+  screen_diff
+  structure_diff
+}
+
+/// One screenshot step's baseline: scenario x step ID x environment x device x runtime.
+model VisualBaseline {
+  id             String                  @id @default(cuid())
+  workspaceId    String
+  scenarioId     String
+  stepId         String
+  environmentId  String
+  /// Normalized device key (device name and viewport).
+  device         String
+  /// `server`, `desktop-mac` or `desktop-windows` (`VISUAL_RUNTIMES`).
+  runtime        String
+  currentVersion Int
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenario       Scenario                @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  environment    Environment             @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  versions       VisualBaselineVersion[]
+
+  @@unique([scenarioId, stepId, environmentId, device, runtime])
+  @@index([workspaceId])
+  @@index([environmentId])
+}
+
+/// A baseline image, copied apart from run artifacts so it outlives the run. Replaced versions stay.
+model VisualBaselineVersion {
+  id                 String           @id @default(cuid())
+  baselineId         String
+  /// From 1.
+  version            Int
+  storageKey         String           @unique
+  width              Int
+  height             Int
+  /// `RenderConditions` (packages/shared).
+  render             Json
+  source             BaselineSource
+  approvedById       String?
+  sourceRunId        String?
+  sourceStepResultId String?
+  createdAt          DateTime         @default(now())
+  baseline           VisualBaseline   @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  approvedBy         User?            @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+  sourceRun          Run?             @relation(fields: [sourceRunId], references: [id], onDelete: SetNull)
+  sourceStepResult   StepResult?      @relation("BaselineSourceStep", fields: [sourceStepResultId], references: [id], onDelete: SetNull)
+  stepResults        StepResult[]     @relation("StepResultBaseline")
+  pins               RunBaselinePin[]
+
+  @@unique([baselineId, version])
+  @@index([sourceRunId])
+  @@index([sourceStepResultId])
+  @@index([approvedById])
+}
+
+/// Baseline versions a run judges against, fixed at creation (or assignment). Deleted when the run ends.
+model RunBaselinePin {
+  runId     String
+  versionId String
+  run       Run                   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  version   VisualBaselineVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([runId, versionId])
+  @@index([versionId])
+}
+
+/// One scenario run on two environments of a site and compared (stage 7 contract section 6).
+model EnvComparison {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  scenarioId         String
+  siteId             String
+  leftEnvironmentId  String
+  rightEnvironmentId String
+  /// Base URLs resolved at creation.
+  leftBaseUrl        String
+  rightBaseUrl       String
+  location           RunLocation
+  deviceId           String?
+  /// Copy of the run conditions. Never variable values or session contents.
+  conditions         Json
+  status             EnvComparisonStatus @default(running)
+  round              Int                 @default(1)
+  claimToken         String?
+  /// DB time.
+  claimExpiresAt     DateTime?
+  /// Percent, 0 to 100.
+  tolerance          Float               @default(5)
+  screenVerdict      ComparisonVerdict?
+  structureVerdict   ComparisonVerdict?
+  error              String?
+  /// Null after the user is deleted.
+  createdById        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  finishedAt         DateTime?
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scenario           Scenario            @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  site               Site                @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  leftEnvironment    Environment         @relation("ComparisonLeft", fields: [leftEnvironmentId], references: [id], onDelete: Cascade)
+  rightEnvironment   Environment         @relation("ComparisonRight", fields: [rightEnvironmentId], references: [id], onDelete: Cascade)
+  device             DesktopDevice?      @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs               Run[]
+  steps              EnvComparisonStep[]
+  files              EnvComparisonFile[]
+
+  @@index([workspaceId, createdAt])
+  @@index([scenarioId])
+  @@index([siteId])
+  @@index([leftEnvironmentId])
+  @@index([rightEnvironmentId])
+  @@index([status, claimExpiresAt])
+}
+
+model EnvComparisonStep {
+  id                String             @id @default(cuid())
+  comparisonId      String
+  stepId            String
+  round             Int
+  leftStepResultId  String?
+  rightStepResultId String?
+  screenVerdict     ComparisonVerdict?
+  screenDiffPercent Float?
+  /// Smallest difference after the shift search, and `{ x, y }` of that shift.
+  screenShiftDiffPercent Float?
+  screenShift            Json?
+  /// Tolerance applied, percent.
+  screenTolerance   Float?
+  screenDiffKey     String?
+  structureVerdict  ComparisonVerdict?
+  structureMoved    Int?
+  structureAdded    Int?
+  structureRemoved  Int?
+  structureChanged  Int?
+  structureDiffKey  String?
+  reason            String?
+  comparison        EnvComparison      @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  leftStepResult    StepResult?        @relation("ComparisonStepLeft", fields: [leftStepResultId], references: [id], onDelete: SetNull)
+  rightStepResult   StepResult?        @relation("ComparisonStepRight", fields: [rightStepResultId], references: [id], onDelete: SetNull)
+
+  @@unique([comparisonId, stepId, round])
+  @@index([leftStepResultId])
+  @@index([rightStepResultId])
+}
+
+/// Files a comparison wrote (screen and structure diffs). Keys carry the claim token: unique per job.
+model EnvComparisonFile {
+  id           String                @id @default(cuid())
+  comparisonId String
+  round        Int
+  claimToken   String
+  kind         EnvComparisonFileKind
+  storageKey   String                @unique
+  createdAt    DateTime              @default(now())
+  comparison   EnvComparison         @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+
+  @@index([comparisonId, round])
 }

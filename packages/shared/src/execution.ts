@@ -3,6 +3,7 @@
 // the contract.
 import { z } from "zod";
 import { NO_STOP, RUN_ERROR_CODES, RUN_TERMINAL_STATUSES, STEP_RESULT_STATUSES, type StopCause } from "./run-status.js";
+import { renderConditionsSchema, VISUAL_VERDICTS } from "./screen-quality.js";
 import { stepSchema, STEP_FORMAT_VERSION } from "./steps.js";
 
 /** Resource limits (contract section 3). Defaults are estimates until measured; deployments override them by env. */
@@ -45,8 +46,12 @@ export const STEP_ERROR_CODES = [
 ] as const;
 export type StepErrorCode = (typeof STEP_ERROR_CODES)[number];
 
-/** `dom_summary`: masked page structure at a failed step (stage 6 contract section 8), for AI diagnosis. */
-export const ARTIFACT_KINDS = ["screenshot", "video", "trace", "log", "dom_summary"] as const;
+/**
+ * `dom_summary`: masked page structure at a failed step (stage 6 contract section 8), for AI diagnosis.
+ * `visual_diff`: visual regression diff image; `a11y_snapshot`: masked accessibility snapshot of a comparison
+ * child's screenshot step (stage 7 contract section 2).
+ */
+export const ARTIFACT_KINDS = ["screenshot", "video", "trace", "log", "dom_summary", "visual_diff", "a11y_snapshot"] as const;
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 
 /** The only content type each kind is stored and served with (contract section 7). */
@@ -56,6 +61,8 @@ export const ARTIFACT_CONTENT_TYPES: Record<ArtifactKind, string> = {
   trace: "application/zip",
   log: "text/plain; charset=utf-8",
   dom_summary: "text/plain; charset=utf-8",
+  visual_diff: "image/png",
+  a11y_snapshot: "text/plain; charset=utf-8",
 };
 
 /** Upper bound of one `dom_summary` artifact (stage 6 contract section 8). */
@@ -178,6 +185,18 @@ export const stepOutcomeSchema = z.strictObject({
   errorMessage: z.string().optional(),
   expected: z.string().optional(),
   actual: z.string().optional(),
+  /** Stage 7 section 4: visual regression of a passed screenshot step. Values are raw, never rounded. */
+  visualVerdict: z.enum(VISUAL_VERDICTS).optional(),
+  visualDiffPercent: z.number().min(0).max(100).optional(),
+  /** Smallest difference after the shift search, and the shift that gave it (current image moved by x, y). */
+  visualShiftDiffPercent: z.number().min(0).max(100).optional(),
+  visualShift: z.strictObject({ x: z.number().int(), y: z.number().int() }).optional(),
+  /** The pinned baseline version the verdict used. */
+  visualBaselineVersionId: z.string().optional(),
+  /** Render conditions of this capture. */
+  render: renderConditionsSchema.optional(),
+  /** Comparison child: the step's `a11y_snapshot` artifact. */
+  a11ySnapshotArtifactId: z.string().optional(),
 });
 export type StepOutcome = z.infer<typeof stepOutcomeSchema>;
 

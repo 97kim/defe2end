@@ -10,6 +10,7 @@ export function createDbClient(databaseUrl = process.env.DATABASE_URL): PrismaCl
 export * from "./runs.js";
 export * from "./groups.js";
 export * from "./maintenance.js";
+export * from "./baseline-cleanup.js";
 export * from "./locks.js";
 export * from "./desktop.js";
 export * from "./variables.js";

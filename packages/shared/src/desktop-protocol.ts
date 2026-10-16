@@ -3,6 +3,7 @@
 // when an old app could misread the new shape).
 import { z } from "zod";
 import { executionPlanSchema, stepOutcomeSchema, storageStateSchema } from "./execution.js";
+import { COMPARISON_SIDES, renderConditionsSchema, VISUAL_RUNTIMES } from "./screen-quality.js";
 import { RUN_TERMINAL_STATUSES, RUN_STATUSES, stopCauseSchema } from "./run-status.js";
 import { STEP_ACTIONS } from "./steps.js";
 
@@ -103,7 +104,19 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** Feature flags an app announces besides the action names it can run. */
-export const DESKTOP_FEATURES = ["stop-run", "auth-session", "video", "test-run", "auth-session-target"] as const;
+export const DESKTOP_FEATURES = [
+  "stop-run",
+  "auth-session",
+  "video",
+  "test-run",
+  "auth-session-target",
+  /** Stage 7 contract section 7: masking script, cover before capture, refuse to capture unmasked. */
+  "masking-v1",
+  /** Baseline download and visual verdict reports. */
+  "visual-compare-v1",
+  /** Accessibility snapshot capture and hiding for environment comparison. */
+  "a11y-snapshot-v1",
+] as const;
 
 /** Owner of a captured login session: the token's user, a schedule or a bot token (stage 5 section 1.1). */
 export const authSessionTargetSchema = z.discriminatedUnion("kind", [
@@ -198,6 +211,33 @@ export const desktopAttachmentSchema = z.strictObject({
 });
 export type DesktopAttachment = z.infer<typeof desktopAttachmentSchema>;
 
+/**
+ * A baseline version the run is pinned to (stage 7 contract section 4). The app fetches the image from
+ * `GET /api/desktop/runs/{runId}/baselines/{versionId}` and judges every screenshot of that key against it.
+ */
+export const desktopPinnedBaselineSchema = z.strictObject({
+  versionId: z.string().min(1),
+  stepId: z.string().min(1),
+  environmentId: z.string().min(1),
+  /** Normalized device key (device name and viewport). */
+  device: z.string().min(1),
+  runtime: z.enum(VISUAL_RUNTIMES),
+  width: z.number().int().min(0),
+  height: z.number().int().min(0),
+  render: renderConditionsSchema,
+});
+export type DesktopPinnedBaseline = z.infer<typeof desktopPinnedBaselineSchema>;
+
+/** Masking settings of the run (stage 7 contract section 5); step `mask` stays on the steps. */
+export const desktopMaskingSchema = z.strictObject({
+  /** Scenario switch: off turns site selectors and automatic detection off, never input or step masks. */
+  enabled: z.boolean(),
+  /** The site's selector list, already split and validated. */
+  selectors: z.array(z.string()),
+  policyVersion: z.number().int().min(1),
+});
+export type DesktopMasking = z.infer<typeof desktopMaskingSchema>;
+
 /** Kept in memory only by the app: `plan.variables` and `plan.storageState` hold secrets. */
 export const desktopRunMessageSchema = z.strictObject({
   type: z.literal("run"),
@@ -211,6 +251,11 @@ export const desktopRunMessageSchema = z.strictObject({
   attachments: z.array(desktopAttachmentSchema),
   /** Children of this group the app may run at once (capped at `DESKTOP_MAX_CONCURRENCY`). */
   concurrency: z.number().int().min(1),
+  /** Stage 7: baseline versions pinned when the run was created or assigned. Absent = none. */
+  baselines: z.array(desktopPinnedBaselineSchema).optional(),
+  masking: desktopMaskingSchema.optional(),
+  /** Set on an environment comparison child: no visual regression, accessibility snapshot per screenshot. */
+  comparison: z.strictObject({ comparisonId: z.string().min(1), side: z.enum(COMPARISON_SIDES) }).optional(),
 });
 export type DesktopRunMessage = z.infer<typeof desktopRunMessageSchema>;
 
