@@ -131,6 +131,8 @@ describeDb("cleanup", () => {
     const diffKey = `workspaces/${workspaceId}/comparisons/${comparison.id}/1-token-s1.png`;
     await oldFile(storage, diffKey, 2 * HOUR);
     await getDb().envComparisonFile.create({ data: { comparisonId: comparison.id, round: 1, claimToken: "token", kind: "screen_diff", storageKey: diffKey } });
+    // A stored result points at it (files of a job that lost its claim are not protected).
+    await getDb().envComparisonStep.create({ data: { comparisonId: comparison.id, stepId: "s1", round: 1, screenDiffKey: diffKey } });
     const unregistered = `workspaces/${workspaceId}/baselines/never-registered.png`;
     await oldFile(storage, unregistered, 2 * HOUR);
 

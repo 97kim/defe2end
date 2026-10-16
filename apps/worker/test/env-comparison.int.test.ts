@@ -13,8 +13,11 @@ import {
 } from "@defe2end/db";
 import { encodePng, LocalStorage } from "@defe2end/shared/server";
 import type { Step } from "@defe2end/shared";
-import { beforeEach, expect, it } from "vitest";
-import { describeDb, getDb, resetDatabase, testConfig } from "./helpers.js";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { createWorker, runMaintenance, type Worker } from "../src/worker.js";
+import { describeDb, getDb, resetDatabase, testConfig, waitFor } from "./helpers.js";
 
 const ENV = { freeBytes: async () => Number.MAX_SAFE_INTEGER, minFreeBytes: () => 0 };
 const RENDER = { browserVersion: "140.0", deviceScaleFactor: 1, viewport: { width: 4, height: 4 }, fontSet: "server", maskingPolicyVersion: 1 };
@@ -190,6 +193,30 @@ describeDb("environment comparison", () => {
     expect(await commitComparison(getDb(), dead, { error: "late" })).toBe(false);
   });
 
+  it("files of a job that lost its claim lose their rows and go with the orphan sweep; committed ones stay", async () => {
+    const config = await testConfig({ orphanAgeMs: 0 });
+    const storage = new LocalStorage(config.storageDir);
+    const s = await seed();
+    const { comparisonId, runIds } = await start(s);
+    const img = png(() => 5);
+    for (const id of runIds) await endChild(storage, id, "passed", { "shot-a": { image: img, snapshot: "- a" }, "shot-b": { image: img, snapshot: "- b" } });
+    // The first job writes the first step's diff, then its claim runs out (a stalled process).
+    const stale = (await claimComparison(getDb(), comparisonId))!;
+    const expire = () => getDb().envComparison.update({ where: { id: comparisonId }, data: { claimExpiresAt: new Date(Date.now() - 1000) } }).then(() => undefined);
+    expect(await runComparisonJob(getDb(), storage, stale, { afterStep: expire })).toBe(false);
+    const staleFiles = await getDb().envComparisonFile.findMany({ where: { claimToken: stale.token } });
+    expect(staleFiles).toHaveLength(1);
+    expect(await finishComparisons(getDb(), storage)).toBe(1);
+    const kept = await getDb().envComparisonFile.findMany({ where: { claimToken: { not: stale.token } } });
+    expect(kept).toHaveLength(2);
+
+    await runMaintenance(getDb(), storage, config);
+    expect(await getDb().envComparisonFile.count({ where: { claimToken: stale.token } })).toBe(0);
+    expect(await storage.stat(staleFiles[0]!.storageKey)).toBeNull();
+    for (const f of kept) expect(await storage.stat(f.storageKey)).not.toBeNull();
+    expect(await getDb().envComparisonFile.count()).toBe(2);
+  });
+
   it("compare again and cancel race: a stale claim never writes", async () => {
     const storage = new LocalStorage((await testConfig()).storageDir);
     const s = await seed();
@@ -237,3 +264,56 @@ async function readText(storage: LocalStorage, key: string): Promise<Buffer> {
   for await (const c of await storage.get(key)) chunks.push(Buffer.from(c as Uint8Array));
   return Buffer.concat(chunks);
 }
+
+// End to end through a real worker and browser: the children record render conditions and snapshots, so the
+// comparison ends with a real verdict. (The tests above insert step rows by hand and can't catch a runner
+// that forgets the render conditions.)
+describeDb("environment comparison through the worker", () => {
+  let server: Server;
+  let origin: string;
+  let worker: Worker | undefined;
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      const right = req.url?.startsWith("/changed/") ?? false;
+      res.writeHead(200, { "content-type": "text/html" }).end(
+        `<body style="margin:0"><h1>${right ? "Sale today" : "Shop"}</h1><a href="${origin}/home">Home</a><div style="width:100%;height:600px;background:${right ? "#c00" : "#08c"}"></div></body>`,
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  beforeEach(resetDatabase);
+  afterEach(async () => {
+    await worker?.stop();
+    worker = undefined;
+  });
+
+  async function compare(rightPath: string) {
+    const steps: Step[] = [
+      { id: "s1", action: "goto", url: "page" },
+      { id: "shot", action: "screenshot", value: "home" },
+    ];
+    const s = await seed({ steps, rightBaseUrl: `${origin}/${rightPath}/` });
+    await getDb().environment.update({ where: { id: s.leftId }, data: { baseUrl: `${origin}/left/` } });
+    const { comparisonId } = await start(s);
+    worker ??= createWorker(getDb(), await testConfig());
+    await worker.start();
+    return waitFor(async () => {
+      const c = await getDb().envComparison.findUniqueOrThrow({ where: { id: comparisonId }, include: { steps: true } });
+      return (c.status === "done" || c.status === "error") && c;
+    }, 60_000);
+  }
+
+  it("ends same for the same page in two environments", async () => {
+    const c = await compare("same");
+    expect({ status: c.status, screen: c.screenVerdict, structure: c.structureVerdict, error: c.error, reason: c.steps[0]?.reason }).toEqual({ status: "done", screen: "same", structure: "same", error: null, reason: null });
+    expect(c.steps[0]!.reason).toBeNull();
+  });
+
+  it("ends different when the screen and structure differ", async () => {
+    const c = await compare("changed");
+    expect({ status: c.status, screen: c.screenVerdict, structure: c.structureVerdict, error: c.error, reason: c.steps[0]?.reason }).toEqual({ status: "done", screen: "different", structure: "different", error: null, reason: null });
+    expect(c.steps[0]).toMatchObject({ structureChanged: 1 });
+  });
+});

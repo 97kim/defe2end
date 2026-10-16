@@ -30,6 +30,7 @@ import {
   type StopCause,
   splitSelectorList,
   type MaskingSettings,
+  type VisualRuntime,
 } from "@defe2end/shared";
 import { captureA11ySnapshot } from "./a11y-snapshot.js";
 import type { Locator, Page, Video } from "playwright";
@@ -67,6 +68,11 @@ export interface RunPlanOptions {
   resolveAttachment?(name: string): Promise<UploadFile | undefined>;
   /** Stage 7 section 4: judge passed screenshot steps against the pinned baselines. Unset = no visual regression. */
   visual?: VisualRegressionOptions;
+  /**
+   * Where this run executes, for the render conditions recorded with every passed screenshot step (stage 7
+   * section 1): visual regression and environment comparison both need them. Defaults to `visual`'s.
+   */
+  render?: { runtime: VisualRuntime; imageFonts?: string };
   /** Stage 7 section 5: the run's masking settings (snapshot or app message). Absent = on, no site selectors. */
   masking?: MaskingSettings;
 }
@@ -329,12 +335,8 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
 
     /** Judges a passed screenshot step; a `changed`/`size_mismatch` makes it a warning, nothing here fails the run. */
     const judgeVisual = async (visual: VisualRegressionOptions, step: Step, index: number, capture: { bytes: Uint8Array; page: Page }, result: StepOutcome) => {
-      let render;
-      try {
-        const r = await collectRenderConditions(capture.page, { runtime: visual.runtime, maskPolicyVersion: MASKING_POLICY_VERSION, browserVersion, ...(visual.imageFonts ? { imageFonts: visual.imageFonts } : {}) });
-        render = { browserVersion: r.browserVersion, deviceScaleFactor: r.deviceScaleFactor, viewport: r.viewport, fontSet: r.fontSet, maskingPolicyVersion: Number(r.maskPolicyVersion) };
-      } catch (err) {
-        await log("warn", `Visual comparison skipped: ${firstLine(err)}`, index);
+      const render = result.render;
+      if (!render) {
         result.visualVerdict = "skipped";
         return;
       }
@@ -418,9 +420,21 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
         durationMs: Date.now() - startedAt.getTime(),
       };
       if (outcome.attempts > 1) result.retried = true;
-      // Never in an environment comparison child (contract section 6): it only captures.
-      if (opts.visual && !plan.a11ySnapshot && step.action === "screenshot" && outcome.status === "passed" && lastCapture && !runError) {
-        await judgeVisual(opts.visual, step, index, lastCapture, result);
+      // Set inside the screenshot callback; TypeScript can't see that assignment here.
+      const capture = lastCapture as { bytes: Uint8Array; page: Page } | undefined;
+      if (step.action === "screenshot" && outcome.status === "passed" && capture && !runError) {
+        // Render conditions of every capture, apart from the visual verdict (comparisons need them too).
+        const where = opts.render ?? opts.visual;
+        if (where) {
+          try {
+            const r = await collectRenderConditions(capture.page, { runtime: where.runtime, maskPolicyVersion: MASKING_POLICY_VERSION, browserVersion, ...(where.imageFonts ? { imageFonts: where.imageFonts } : {}) });
+            result.render = { browserVersion: r.browserVersion, deviceScaleFactor: r.deviceScaleFactor, viewport: r.viewport, fontSet: r.fontSet, maskingPolicyVersion: Number(r.maskPolicyVersion) };
+          } catch (err) {
+            await log("warn", `Render conditions not recorded: ${firstLine(err)}`, index);
+          }
+        }
+        // Never in an environment comparison child (contract section 6): it only captures.
+        if (opts.visual && !plan.a11ySnapshot) await judgeVisual(opts.visual, step, index, capture, result);
       }
       if (outcome.failure) {
         if (outcome.failure.code) result.errorCode = outcome.failure.code;
