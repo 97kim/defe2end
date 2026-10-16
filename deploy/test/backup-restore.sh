@@ -23,7 +23,14 @@ BETTER_AUTH_SECRET=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
 DEFE2END_ENCRYPTION_KEY=$KEY
 ENV
 compose() { docker compose -p "$PROJECT" --env-file "$WORK/env" -f docker-compose.build.yml "$@"; }
-cleanup() { compose down -v --rmi local >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+# Backup files belong to the image's user and are 0600, so the host user may not read or remove them (on Linux
+# runners the uids differ); anything that touches them goes through a container as that user.
+as_image_user() { compose run --rm --no-deps -T --entrypoint sh -v "$WORK:/work" migrate -c "$1"; }
+cleanup() {
+  as_image_user 'rm -rf /work/backup/* /work/other/*' >/dev/null 2>&1 || true
+  compose down -v --rmi local >/dev/null 2>&1 || true
+  rm -rf "$WORK"
+}
 trap cleanup EXIT INT TERM
 
 wait_web() {
@@ -78,21 +85,23 @@ cat "$WORK/seed.json"
 echo "== backup is refused while web and worker run"
 if compose run --rm --no-deps -T -v "$BACKUP:/backup" migrate backup /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "docker compose stop web worker" "$WORK/out" || { cat "$WORK/out"; exit 1; }
-rm -rf "$BACKUP" && mkdir -p "$BACKUP" && chmod 777 "$BACKUP"
+as_image_user 'rm -rf /work/backup/*'
+
 
 echo "== backup with web and worker stopped"
 compose stop web worker
 compose run --rm --no-deps -T -v "$BACKUP:/backup" migrate backup /backup
-test -s "$BACKUP/db.dump" && test -s "$BACKUP/manifest.json"
-if grep -q "$KEY" "$BACKUP/manifest.json"; then echo "the encryption key leaked into manifest.json" >&2; exit 1; fi
+as_image_user 'test -s /work/backup/db.dump && test -s /work/backup/manifest.json'
+if as_image_user "grep -qF '$KEY' /work/backup/manifest.json"; then echo "the encryption key leaked into manifest.json" >&2; exit 1; fi
 
 echo "== wipe everything, start an empty postgres"
 compose down -v
 compose up -d --wait postgres
 
 echo "== a backup from another version is refused"
-mkdir -p "$WORK/other" && cp -R "$BACKUP/." "$WORK/other/"
-sed 's/"appVersion": "[^"]*"/"appVersion": "0.0.0-other"/' "$BACKUP/manifest.json" > "$WORK/other/manifest.json"
+mkdir -p "$WORK/other" && chmod 777 "$WORK/other"
+as_image_user 'cp -R /work/backup/. /work/other/ && sed "s/\"appVersion\": \"[^\"]*\"/\"appVersion\": \"0.0.0-other\"/" /work/backup/manifest.json > /work/other/manifest.json'
+as_image_user 'grep -q "0.0.0-other" /work/other/manifest.json' 
 if compose run --rm --no-deps -T -v "$WORK/other:/backup:ro" migrate restore /backup > "$WORK/out" 2>&1; then cat "$WORK/out"; exit 1; fi
 grep -q "Restore with the image of version 0.0.0-other first" "$WORK/out" || { cat "$WORK/out"; exit 1; }
 
