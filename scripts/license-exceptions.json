@@ -4,69 +4,55 @@
     "version": "3.0.0",
     "license": "ISC",
     "holder": "GitHub Inc.",
-    "reason": "package.json declares ISC; no license file in the published package or upstream, checked 2026-10-16: https://github.com/npm/agent (tag v3.0.0 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file; README.md has no license section; package.json declares ISC. Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "@prisma/dev",
     "version": "0.24.17",
     "license": "ISC",
     "holder": "Igal Klebanov",
-    "reason": "package.json declares ISC; no license file in the published package or upstream, checked 2026-10-16: https://registry.npmjs.org/@prisma/dev/0.24.17 (no repository given; the package has only dist/ and package.json). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file or README (the package has only dist/ and package.json); package.json declares ISC. Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "eastasianwidth",
     "version": "0.2.0",
     "license": "MIT",
     "holder": "Masaki Komagata",
-    "reason": "package.json declares MIT; no license file in the published package or upstream, checked 2026-10-16: https://github.com/komagata/eastasianwidth (tag v0.2.0 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file; README.md has no license section; package.json declares MIT. Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "err-code",
     "version": "2.0.3",
     "license": "MIT",
     "holder": "IndigoUnited",
-    "reason": "package.json declares MIT; no license file in the published package or upstream, checked 2026-10-16: https://github.com/IndigoUnited/js-err-code (tag v2.0.3 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
-  },
-  {
-    "name": "pg-types",
-    "version": "2.2.0",
-    "license": "MIT",
-    "holder": "Brian M. Carlson",
-    "reason": "package.json declares MIT; no license file in the published package or upstream, checked 2026-10-16: https://github.com/brianc/node-pg-types (tag v2.2.0 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
-  },
-  {
-    "name": "pgpass",
-    "version": "1.0.5",
-    "license": "MIT",
-    "holder": "Hannes Hörl",
-    "reason": "package.json declares MIT; no license file in the published package or upstream, checked 2026-10-16: https://github.com/hoegaarden/pgpass (tag v1.0.5 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file; README.md's License section only says it is released under the MIT License (link, no full text or copyright line) (included when the copy carries its README; the copy inside the base image's bundled npm has no README). Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "spdx-exceptions",
     "version": "2.5.0",
     "license": "CC-BY-3.0",
     "holder": "The Linux Foundation, Kyle E. Mitchell",
-    "reason": "package.json declares CC-BY-3.0; no license file in the published package or upstream, checked 2026-10-16: https://github.com/kemitchell/spdx-exceptions.json (tag v2.5.0 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file; README.md's Copyright and Licensing section gives the copyright and names CC-BY-3.0 without its text (included when the copy carries its README; the copy inside the base image's bundled npm has no README). Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "spdx-license-ids",
     "version": "3.0.23",
     "license": "CC0-1.0",
     "holder": "Shinnosuke Watanabe",
-    "reason": "package.json declares CC0-1.0; no license file in the published package or upstream, checked 2026-10-16: https://github.com/jslicense/spdx-license-ids (tag v3.0.23 and default branch). The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file; README.md's License section only names CC0-1.0 (link) (included when the copy carries its README; the copy inside the base image's bundled npm has no README). Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "client-only",
     "version": "0.0.1",
     "license": "MIT",
     "holder": "the client-only authors (published by npm user sebmarkbage; no author or repository named)",
-    "reason": "package.json declares MIT; the package has only index.js, error.js and package.json and names no repository, checked 2026-10-16: https://registry.npmjs.org/client-only/0.0.1. The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "No license file or README (only index.js, error.js and package.json); package.json declares MIT and names no author or repository. Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   },
   {
     "name": "string-hash",
     "version": "bundled in next 16.4.0",
     "license": "CC0-1.0",
     "holder": "The Dark Sky Company",
-    "reason": "Copy vendored inside next/dist/compiled with only index.js and package.json; package.json declares CC0-1.0 (a public-domain dedication, no notice required), checked 2026-10-16. The standard SPDX text of the declared license, with the holder from package.json author/contributors (or the publisher), stands in."
+    "reason": "Copy vendored inside next/dist/compiled with only index.js and package.json; package.json declares CC0-1.0. Upstream checked 2026-10-16 (published package, its tag and default branch). The SPDX standard text of the declared license, with the holder from package.json author/contributors (or the publisher), is added."
   }
 ]

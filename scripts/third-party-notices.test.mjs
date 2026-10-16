@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildNotices, mergedSbom, parseExtra } from "./third-party-notices.mjs";
+import { buildNotices, mergedSbom, parseExtra, readmeLicenseSection } from "./third-party-notices.mjs";
 
 function tree() {
   const root = mkdtempSync(join(tmpdir(), "notices-"));
@@ -61,4 +61,13 @@ test("collects texts verbatim, once per distinct text, and lists source offers",
 test("parses extras, scoped names included", () => {
   assert.deepEqual(parseExtra("@s/x@1.2=MIT=/p=https://s"), { name: "@s/x", version: "1.2", license: "MIT", path: "/p", source: "https://s" });
   assert.throws(() => parseExtra("x=MIT=/p"), /bad --extra/);
+});
+
+test("takes the license section of a README, up to the next heading of the same level", () => {
+  const dir = mkdtempSync(join(tmpdir(), "readme-"));
+  writeFileSync(join(dir, "README.md"), "# pkg\n\n## Use\n\nx\n\n## license\n\nThe MIT License (MIT)\n\nCopyright (c) 2014 Someone\n\n### note\n\nkept\n\n## Other\n\ndropped\n");
+  const section = readmeLicenseSection(dir);
+  assert.match(section, /^From README\.md:\n\n## license\n\nThe MIT License \(MIT\)\n\nCopyright \(c\) 2014 Someone\n\n### note\n\nkept$/);
+  writeFileSync(join(dir, "README.md"), "# pkg\n\nno license here\n");
+  assert.equal(readmeLicenseSection(dir), undefined);
 });

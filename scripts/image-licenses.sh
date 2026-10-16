@@ -50,7 +50,7 @@ if [ "$NAME" = worker ]; then
   cver="$(node -e 'const b=require(process.argv[1]).browsers.find((x)=>x.name==="chromium-headless-shell"&&x.revision===process.argv[2]);process.stdout.write(b?.browserVersion??"")' "$bj" "$rev")"
   [ -n "$cver" ] || { echo "no Chromium version for headless shell r$rev in $bj" >&2; exit 1; }
   pwv="$(node -p 'require(process.argv[1]).version' "$(dirname "$bj")/package.json")"
-  NOTE="chromium-headless-shell@$cver=$(sh scripts/playwright-build-note.sh chromium-headless-shell "$rev" "$pwv")"
+  NOTE="chromium-headless-shell@$cver=$(sh scripts/playwright-build-note.sh chromium-headless-shell "$rev" "$pwv" "$cver")"
   lic="$(find "$shell" -maxdepth 2 -iname 'LICENSE*' | head -n 1)"
   [ -n "$lic" ] || { echo "no license file in $shell" >&2; exit 1; }
   EXTRA="chromium-headless-shell@$cver=BSD-3-Clause=$lic=https://chromium.googlesource.com/chromium/src/+/refs/tags/$cver"

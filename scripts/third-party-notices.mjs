@@ -34,6 +34,30 @@ export function licenseFiles(dir) {
   return out;
 }
 
+/**
+ * The license section of a package README (a "License" / "Copyright and Licensing" heading up to the next heading
+ * of the same or a higher level), for packages that keep their license there instead of in a file.
+ */
+export function readmeLicenseSection(dir) {
+  if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) return undefined;
+  const readme = readdirSync(dir).find((f) => /^readme(\.(md|markdown|txt))?$/i.test(f));
+  if (!readme) return undefined;
+  const lines = readFileSync(join(dir, readme), "utf8").replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((l) => /^#{1,6}\s*(licen[cs]e|licensing|copyright( and licen[cs]ing)?)\s*$/i.test(l.trim()));
+  if (start < 0) return undefined;
+  const level = /^#+/.exec(lines[start].trim())[0].length;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    const m = /^(#+)\s/.exec(lines[i].trim());
+    if (m && m[1].length <= level) {
+      end = i;
+      break;
+    }
+  }
+  const section = lines.slice(start, end).join("\n").trim();
+  return section.split("\n").length > 1 ? `From ${readme}:\n\n${section}` : undefined;
+}
+
 /** "a@1=MIT=/x=https://src" → { name: "a", version: "1", license: "MIT", path: "/x", source } (a scoped name keeps its @). */
 export function parseExtra(spec) {
   const m = /^(@?[^@=]+)@([^=]+)=([^=]+)=([^=]+)=(https:\/\/\S+)$/.exec(spec);
@@ -146,7 +170,12 @@ export function buildNotices({ sbom, root, extras = [], title = "defE2End", exce
     if (!files.length) files = licenseFiles(textsRootDir(c, textsRoot));
     if (!files.length) files = licenseFiles(join(UPSTREAM_DIR, `${String(c.name).replaceAll("/", "__")}@${c.version}.txt`));
     const bodies = files.map((file) => readFileSync(file, "utf8").replace(/\r\n/g, "\n").trim());
-    const exception = bodies.length ? undefined : findException(c, exceptions);
+    if (!bodies.length) {
+      const section = readmeLicenseSection(licenseDir(c, root)) ?? readmeLicenseSection(textsRootDir(c, textsRoot));
+      if (section) bodies.push(section);
+    }
+    // An exception adds the standard text where the package states its license without the full text.
+    const exception = findException(c, exceptions) && !files.length ? findException(c, exceptions) : undefined;
     if (exception) bodies.push(standardText(exception));
     const refs = bodies.map((body) => {
       const hash = createHash("sha256").update(body).digest("hex").slice(0, 12);
