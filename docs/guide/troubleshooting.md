@@ -35,7 +35,6 @@ The database isn't reachable or a migration failed. Check `docker compose logs m
 ## Runs stay queued
 
 - After a restore, automation is paused until you resume it.
-
 - Is `worker` running? `docker compose ps`.
 - Free disk below `MIN_FREE_DISK_MB`: the worker takes no new runs.
 - Concurrency limits (`WORKER_CONCURRENCY`, `MAX_CONCURRENT_RUNS`, `WORKSPACE_CONCURRENCY`) are full.
