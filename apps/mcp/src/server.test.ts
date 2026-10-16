@@ -61,7 +61,6 @@ async function connect(opts: { clientName?: string; env?: NodeJS.ProcessEnv; tim
   const { server, close } = createDefe2endMcpServer({
     connector: createConnector({
       env,
-      platform: "darwin",
       readToken: async () => {
         tokenReads++;
         return "session-token";

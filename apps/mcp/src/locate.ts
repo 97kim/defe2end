@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 
 export interface AppEndpoint {
   /** Unix socket path (mac) or named pipe path (Windows). */
@@ -18,13 +18,13 @@ export const KEYCHAIN_SERVICE = "defE2End MCP session";
 /** `DEFE2END_MCP_DIR`, else the app data folder's `mcp` folder. */
 export function mcpDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   if (env.DEFE2END_MCP_DIR) return env.DEFE2END_MCP_DIR;
-  if (platform === "win32") return join(env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "defE2End", "mcp");
-  return join(homedir(), "Library", "Application Support", "defE2End", "mcp");
+  if (platform === "win32") return win32.join(env.APPDATA ?? win32.join(homedir(), "AppData", "Roaming"), "defE2End", "mcp");
+  return posix.join(homedir(), "Library", "Application Support", "defE2End", "mcp");
 }
 
 /** mac: `$DIR/mcp.sock`. Windows: the pipe name written in `$DIR\endpoint.txt` (one line). */
 export async function endpointPath(dir: string, platform: NodeJS.Platform = process.platform): Promise<string> {
-  if (platform !== "win32") return join(dir, "mcp.sock");
+  if (platform !== "win32") return posix.join(dir, "mcp.sock");
   const name = (await readFile(join(dir, "endpoint.txt"), "utf8")).trim();
   if (!name) throw new Error("endpoint.txt is empty");
   return name.startsWith("\\\\") ? name : `\\\\.\\pipe\\${name}`;
