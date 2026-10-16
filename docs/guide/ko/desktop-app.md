@@ -10,7 +10,7 @@
 
 - macOS Apple Silicon: `defE2End-1.0.0-arm64.dmg`
 - macOS Intel: `defE2End-1.0.0-x64.dmg`
-- Windows x64: `defE2End Setup 1.0.0.exe`
+- Windows x64: `defE2End-1.0.0-setup.exe`
 
 릴리스마다 `SHA256SUMS`(모든 릴리스 파일의 체크섬), `IMAGE_DIGESTS.txt`(서버 이미지 세 개의 digest), 설치 파일과 이미지의 GitHub 출처 증명도 있어요.
 
@@ -33,7 +33,7 @@ grep defE2End-1.0.0-arm64.dmg SHA256SUMS
 Windows(PowerShell):
 
 ```powershell
-Get-FileHash "$env:USERPROFILE\Downloads\defE2End Setup 1.0.0.exe" -Algorithm SHA256
+Get-FileHash "$env:USERPROFILE\Downloads\defE2End-1.0.0-setup.exe" -Algorithm SHA256
 ```
 
 해시가 다르면 파일을 지우고 다시 받으세요. 해시가 맞지 않는 파일은 설치하지 마세요.

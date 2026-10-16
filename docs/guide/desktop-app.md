@@ -10,7 +10,7 @@ Get the installer from the GitHub Releases page of the version that matches your
 
 - macOS Apple Silicon: `defE2End-1.0.0-arm64.dmg`
 - macOS Intel: `defE2End-1.0.0-x64.dmg`
-- Windows x64: `defE2End Setup 1.0.0.exe`
+- Windows x64: `defE2End-1.0.0-setup.exe`
 
 Each release also has `SHA256SUMS` (checksums of every release file), `IMAGE_DIGESTS.txt` (the digests of the three server images) and GitHub build provenance for the installers and images.
 
@@ -33,7 +33,7 @@ grep defE2End-1.0.0-arm64.dmg SHA256SUMS
 Windows (PowerShell):
 
 ```powershell
-Get-FileHash "$env:USERPROFILE\Downloads\defE2End Setup 1.0.0.exe" -Algorithm SHA256
+Get-FileHash "$env:USERPROFILE\Downloads\defE2End-1.0.0-setup.exe" -Algorithm SHA256
 ```
 
 If the hash differs, delete the file and download it again. Don't install a file whose hash doesn't match.

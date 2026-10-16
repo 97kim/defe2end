@@ -47,5 +47,7 @@ win:
     - target: nsis
       arch: x64
 nsis:
+  # No spaces in the file name, so the download and checksum commands need no quoting.
+  artifactName: ${productName}-${version}-setup.${ext}
   oneClick: false
   perMachine: false
