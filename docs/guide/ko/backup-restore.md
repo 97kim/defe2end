@@ -20,12 +20,24 @@
 
 ```sh
 docker compose stop web worker
-mkdir -p backups/2026-10-16 && chmod 777 backups/2026-10-16   # 이미지는 uid 1000으로 돌아요
+mkdir -p -m 0700 backups/2026-10-16
+sudo chown 1000:1000 backups/2026-10-16   # migrate 이미지는 uid 1000으로 돌아요
 docker compose run --rm --no-deps -T -v "$PWD/backups/2026-10-16:/backup" migrate backup /backup
 docker compose start web worker
 ```
 
-대상 폴더는 비어 있어야 해요. 다 만든 폴더는 서버 밖으로 복사해 두세요.
+대상 폴더는 비어 있어야 해요. 덤프에는 모든 데이터가 들어 있으니 uid 1000(과 root)만 열 수 있게 두세요.
+
+백업 뒤 권한을 확인하세요. 폴더는 `drwx------`, 파일은 모두 `-rw-------`여야 해요.
+
+```sh
+sudo ls -laR backups/2026-10-16
+# 더 넓게 열려 있으면:
+sudo find backups/2026-10-16 -type d -exec chmod 0700 {} +
+sudo find backups/2026-10-16 -type f -exec chmod 0600 {} +
+```
+
+다 만든 폴더는 서버 밖으로 복사하고, 보관하는 곳에서도 같은 제한을 유지하세요.
 
 ## 빈 설치에 복원
 
@@ -43,7 +55,7 @@ docker compose start web worker
    ```sh
    docker compose up -d postgres
    ```
-3. 복원하세요(폴더는 읽기 전용이어도 돼요).
+3. 백업 폴더를 새 호스트에 같은 소유자·권한으로 두고(`sudo chown -R 1000:1000 …`, 폴더 `0700`, 파일 `0600`) 복원하세요(읽기 전용으로 연결해도 돼요).
    ```sh
    docker compose run --rm --no-deps -T -v "$PWD/backups/2026-10-16:/backup:ro" migrate restore /backup
    ```
