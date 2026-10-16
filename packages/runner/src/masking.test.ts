@@ -55,7 +55,8 @@ describe("masking in screenshots", () => {
     const { files, results, logs } = await execute(makePlan(fixtures.url, [open, { ...shot, mask: "#step, div[" }]), { masking: SETTINGS });
     expect(results[1]!.status).toBe("failed");
     expect(results[1]!.errorMessage).toBe("Masking could not be applied, so the screenshot was not taken");
-    expect(files.filter((f) => f.name === "masked")).toEqual([]);
+    // No failure screenshot either: it would lack the step's mask.
+    expect(files.filter((f) => f.kind === "screenshot")).toEqual([]);
     expect(logs.some((l) => l.startsWith('Screenshot "masked" not collected: masking could not be applied'))).toBe(true);
   });
 
@@ -113,6 +114,24 @@ describe("page masking script", () => {
       await page.waitForFunction((attr) => document.getElementById("in")!.hasAttribute(attr), MASK_ATTR, { timeout: 1_000 });
       expect(await page.inputValue("#in")).toBe("park@example.com");
       expect(await page.locator("#in").evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-text-security"))).toBe("disc");
+    });
+  });
+
+  it("hides emails with digits but not short digit runs", async () => {
+    await withPage([], async (page) => {
+      await page.goto(`${fixtures.url}/mask-busy.html`);
+      const marks = await page.evaluate(async (attr) => {
+        const make = (text: string) => {
+          const el = document.createElement("div");
+          el.textContent = text;
+          document.body.append(el);
+          return el;
+        };
+        const els = [make("user1@example.com"), make("12345678@ex.co"), make("Order 12345678"), make("02-123-45")];
+        await new Promise((r) => setTimeout(r, 500));
+        return els.map((el) => el.hasAttribute(attr));
+      }, MASK_ATTR);
+      expect(marks).toEqual([true, true, false, false]);
     });
   });
 

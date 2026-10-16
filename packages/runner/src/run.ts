@@ -250,12 +250,13 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       const found = session.unmaskable.has(page) ? { reason: session.unmaskable.get(page)! } : await secretMasks(page);
       if ("reason" in found) {
         await log("warn", `Screenshot "${name}" not collected: ${found.reason}`, stepIndex);
+        if (forStep) throw new MaskingRefused();
         return;
       }
       const shot = await captureMasked(page, { settings: masking, ...(extraMask ? { stepMask: extraMask } : {}), extra: found.masks });
       if (!shot.ok) {
         await log("warn", `Screenshot "${name}" not collected: masking could not be applied (${shot.reason})`, stepIndex);
-        if (forStep) throw new StepFailure(undefined, MASKING_FAILED_MESSAGE);
+        if (forStep) throw new MaskingRefused();
         return;
       }
       await storeBytes("screenshot", mask(name), shot.png, stepIndex);
@@ -371,7 +372,9 @@ export async function runPlanWith(plan: ExecutionPlan, opts: RunPlanOptions, int
       const outcome = await runStep(step, index, session, plan, opts, saveStepScreenshot, stopReason, (m) => log("info", m, index), () => blockedLog.length > 0, maskNow);
       if (outcome.limit) runError = { code: "artifact_limit", message: outcome.limit.message };
 
-      if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError) {
+      // A screenshot refused for masking isn't captured again as a failure screenshot (without the step's mask).
+      const refused = outcome.failure instanceof MaskingRefused;
+      if ((outcome.status === "failed" || outcome.status === "error") && !stopReason() && !runError && !refused) {
         // Try to capture the failure; record why when it can't be done (e.g. the browser died).
         try {
           await saveScreenshot(`step-${index + 1}-failure`, index);
@@ -624,6 +627,13 @@ function stoppedMessage(reason: AbortReason): string {
       return "The worker lost its lease during this step";
     case "worker_shutdown":
       return "The worker shut down during this step";
+  }
+}
+
+/** A screenshot step whose masking couldn't be applied: failed, nothing captured, no failure screenshot. */
+class MaskingRefused extends StepFailure {
+  constructor() {
+    super(undefined, MASKING_FAILED_MESSAGE);
   }
 }
 
