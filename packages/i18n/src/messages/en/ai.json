@@ -71,5 +71,14 @@
       "accept": "Agree and continue",
       "cancel": "Cancel"
     }
+  },
+  "sideBrowser": {
+    "title": "Side browser",
+    "hint": "Opened for the AI. Closing it closes its tabs too.",
+    "area": "The browser opens here.",
+    "close": "Close",
+    "closeLabel": "Close the side browser",
+    "aiActive": "AI is using the browser",
+    "error": "Couldn't open the browser."
   }
 }

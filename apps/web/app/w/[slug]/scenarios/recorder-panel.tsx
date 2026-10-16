@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { z } from "zod";
 import { Alert, Button, inputClass } from "../../../../components/ui";
 import { newStepId } from "../../../../lib/scenario-helpers";
+import { claimForRecorder } from "../side-browser-owner";
 
 // Recording in the desktop app (stage 4 contract section 7): the web UI reserves the side browser's area and
 // sends its bounds, starts and stops recording, shows the `RecordingResult` the app sends, and puts the steps
@@ -87,11 +88,6 @@ export interface RecorderEnvironment {
 export function RecordButton({ onOpen, disabled }: { onOpen: (bridge: DesktopBridge) => void; disabled?: boolean }) {
   const t = useTranslations("scenarios.recorder");
   const bridge = useDesktopBridge();
-  // An AI browser tool asks for the side browser (stage 6 contract section 5): open the panel like this button.
-  useEffect(() => {
-    if (!bridge || disabled) return;
-    return bridge.mcp?.onOpenRequested?.(() => onOpen(bridge));
-  }, [bridge, disabled, onOpen]);
   if (!bridge) return null;
   return (
     <Button variant="secondary" disabled={disabled} onClick={() => onOpen(bridge)}>
@@ -145,6 +141,8 @@ export function RecorderPanel({
 
   // Open the side browser over the reserved area, keep its bounds in sync, close it with the panel.
   useEffect(() => {
+    // Take the one side browser before opening it, so the workspace column hands it over instead of closing it.
+    const release = claimForRecorder();
     const b = bounds();
     if (b) void bridge.sideBrowser.open(environment?.baseUrl, b).catch(() => setError(t("errorBrowser")));
     const sync = () => {
@@ -164,7 +162,13 @@ export function RecorderPanel({
       if (parsed.success) setChecks((all) => [...all, parsed.data]);
     });
     const offAi = bridge.mcp?.onAiActive?.(setAiActive);
+    // An AI browser tool asks for the browser while this panel owns it (its tabs were closed): open it here again.
+    const offOpen = bridge.mcp?.onOpenRequested?.(() => {
+      const again = bounds();
+      if (again) void bridge.sideBrowser.open(undefined, again).catch(() => setError(t("errorBrowser")));
+    });
     return () => {
+      offOpen?.();
       offAi?.();
       observer.disconnect();
       window.removeEventListener("resize", sync);
@@ -172,6 +176,7 @@ export function RecorderPanel({
       offCheck();
       void bridge.recorder.stop().catch(() => {});
       void bridge.sideBrowser.close().catch(() => {});
+      release();
     };
     // Opened once per panel; later environment changes navigate instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
